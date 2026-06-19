@@ -1100,7 +1100,7 @@ function Lekmap_Spawns.ChooseLocations(args)
     else
         settings.coast_lux_mode = 2
     end
-    settings.collide_coastals = (args.collideCoastals  ~= nil) and args.collideCoastals  or true
+    settings.collide_coastals = args.collideCoastals ~= false
     settings.allow_inland_sea = (args.AllowInlandSea   ~= nil) and args.AllowInlandSea   or false
 
     local coastal_is_hard   = (args.NoCoastInland    ~= nil) and args.NoCoastInland    or false

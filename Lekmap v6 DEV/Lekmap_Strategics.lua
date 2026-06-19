@@ -420,8 +420,23 @@ local STRAT_BALANCE_RULES = {
     { key = "URANIUM",  count = 1, preferred = 6, max_radius = 6 },
 }
 
+-- Preserve the six existing menu choices. The capital luxury/bonus budgets are
+-- controlled separately; this setting selects which strategic types are supplied.
+function Lekmap_Strategics.GetStartRules(start_quality)
+    local quality = start_quality or 2
+    local rules = {}
+    for _, rule in ipairs(STRAT_BALANCE_RULES) do
+        local enabled = rule.key == "IRON" or rule.key == "HORSE" or rule.key == "OIL"
+        if rule.key == "COAL" then enabled = quality == 1 or quality == 2 or quality == 4 or quality == 6 end
+        if rule.key == "ALUMINUM" then enabled = quality == 1 or quality == 2 or quality == 5 or quality == 6 end
+        if rule.key == "URANIUM" then enabled = quality == 2 end
+        if enabled then table.insert(rules, rule) end
+    end
+    return rules
+end
+
 function Lekmap_Strategics.PlaceAtStarts(args)
-    if not args.strategicBalance then return end
+    if not args.strategicBalance or args.guaranteedStrategics == false then return end
 
     local resource_setting = Lekmap_Resources.GetResourceSetting()
     local bracket = GetBracket(resource_setting)
@@ -431,7 +446,7 @@ function Lekmap_Strategics.PlaceAtStarts(args)
 
     for region_index, start_plot in pairs(start_plots) do
         if start_plot and start_plot.x and start_plot.y then
-            for _, rule in ipairs(STRAT_BALANCE_RULES) do
+            for _, rule in ipairs(Lekmap_Strategics.GetStartRules(args.startQuality)) do
                 local resource_id = Lekmap_ResourceDefs.GetID(rule.key)
                 if resource_id then
                     local qty = quantities[rule.key] or 2

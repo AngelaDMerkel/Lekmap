@@ -675,7 +675,7 @@ function Lekmap_NaturalWonders.PlaceAll(args)
 
     -- Determine target count.
     local target = NW_TARGETS[Map.GetWorldSize()] or 5
-    if args.wonder_amount and args.wonder_amount ~= 14 then
+    if args.wonder_amount ~= nil then
         target = args.wonder_amount
     end
     local num_to_place = math.min(target, #priority_order)

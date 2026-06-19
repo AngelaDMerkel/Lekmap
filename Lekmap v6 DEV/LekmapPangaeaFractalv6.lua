@@ -91,14 +91,14 @@ function GetMapScriptInfo()
 			},
 
 			----------------------------------------------------------------
-			-- OPTION 5: [Spawns] Start Quality
+			-- OPTION 5: [Spawns] Strategic Access
 			----------------------------------------------------------------
 			{
-				Name = "[Spawns] Start Quality",
+				Name = "[Spawns] Strategic Access",
 				Values = {
-					"Legendary Start - Strat Balance",
-					"Legendary - Strat Balance + Uranium",
-					"TXT_KEY_MAP_OPTION_STRATEGIC_BALANCE",
+					"All except Uranium",
+					"All Strategics",
+					"Iron, Horses & Oil",
 					"Strategic Balance With Coal",
 					"Strategic Balance With Aluminum",
 					"Strategic Balance With Coal & Aluminum",
@@ -1993,6 +1993,9 @@ function StartPlotSystem()
 	local balancedRegionalsOpt = Map.GetCustomOption(14); -- Yes = allow extended + balanced regional luxuries
 	local balanced_regionals   = (balancedRegionalsOpt == 1);
 	local startQuality    = Map.GetCustomOption(5);
+	if startQuality == 7 then
+		startQuality = 1 + Map.Rand(6, "Random strategic access - Lekmap");
+	end
 	local allowInlandSea  = Map.GetCustomOption(18);
 	local coastalSetting  = Map.GetCustomOption(16);
 	local coastLuxMode          = Map.GetCustomOption(17);  -- 1–5 coastal luxury policy
@@ -2033,7 +2036,7 @@ function StartPlotSystem()
 	Lekmap_Regions.Generate({
 		method          = 1, -- Biggest Landmass
 		numCivs         = numCivs,
-		resourceSetting = resourceSetting,
+		resource_setting = resourceSetting,
 	});
 
 	------------------------------------------------------------------------------
@@ -2058,7 +2061,7 @@ function StartPlotSystem()
 	------------------------------------------------------------------------------
 	print("Lekmap: Initializing resource system.");
 	Lekmap_Resources.Initialize({
-		resourceSetting = resourceSetting,
+		resource_setting = resourceSetting,
 	});
 
 	------------------------------------------------------------------------------
@@ -2086,14 +2089,16 @@ function StartPlotSystem()
 	if wonderOption == 14 then
 		wonderAmount = Map.Rand(13, "Number of Wonders To Spawn");
 	elseif wonderOption == 15 then
-		wonderAmount = Map.Rand(3, "") + 3;
+		wonderAmount = nil; -- Use the world-size default.
 	elseif wonderOption == 16 then
-		wonderAmount = Map.Rand(5, "") + 2;
+		wonderAmount = Map.Rand(3, "Wonder count 3-5 - Lekmap") + 3;
+	elseif wonderOption == 17 then
+		wonderAmount = Map.Rand(5, "Wonder count 2-6 - Lekmap") + 2;
 	else
 		wonderAmount = wonderOption - 1;
 	end
-	print("Lekmap: Placing Natural Wonders (" .. wonderAmount .. " targeted).");
-	Lekmap_NaturalWonders.PlaceAll({ wonderAmount = wonderAmount });
+	print("Lekmap: Placing Natural Wonders (" .. tostring(wonderAmount or "world-size default") .. " targeted).");
+	Lekmap_NaturalWonders.PlaceAll({ wonder_amount = wonderAmount });
 
 	------------------------------------------------------------------------------
 	-- 8. Place resources (luxuries, strategics, bonus).
@@ -2101,11 +2106,11 @@ function StartPlotSystem()
 	------------------------------------------------------------------------------
 	print("Lekmap: Placing resources.");
 	Lekmap_Resources.PlaceAll({
-		resourceSetting             = resourceSetting,
+		resource_setting            = resourceSetting,
 		startQuality                = startQuality,
 		coastLuxMode                = coastLuxMode,
 		additionalCoastalLuxuries   = additionalCoastLuxOpt,
-		strategicBalance            = true,
+		strategicBalance            = guaranteed_strategics,
 		startingLuxuries            = starting_luxuries,
 		additionalStartLuxuries     = additional_start_luxuries,
 		guaranteedStrategics        = guaranteed_strategics,
