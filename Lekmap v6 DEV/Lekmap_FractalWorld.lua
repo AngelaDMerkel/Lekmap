@@ -109,25 +109,18 @@ function FractalWorld:ShiftPlotTypes()
 end
 -------------------------------------------------------------------------------------------	
 function FractalWorld:ShiftPlotTypesBy(x_shift, y_shift)
-	if(x_shift > 0 or y_shift > 0) then
-		local total_plots = self.num_plots_x * self.num_plots_y
-		local buffer = {}
-		for i = 1, total_plots + 1 do
-			buffer[i] = self.plot_types[i]
-		end
-		
-		for dest_y = 0, self.num_plots_y do
-			for dest_x = 0, self.num_plots_x do
-				local dest_index = self.num_plots_x * dest_y + dest_x
-				local source_x = (dest_x + x_shift) % self.num_plots_x
-				local source_y = (dest_y + y_shift) % self.num_plots_y
-				
-				local source_index = self.num_plots_x * source_y + source_x
-				self.plot_types[dest_index] = buffer[source_index]
-			end
-		end
-	end
+    if x_shift == 0 and y_shift == 0 then return end
+    local buffer = {}
+    for i = 1, self.num_plots_x * self.num_plots_y do buffer[i] = self.plot_types[i] end
+    for y = 0, self.num_plots_y - 1 do
+        for x = 0, self.num_plots_x - 1 do
+            local sx = (x + x_shift) % self.num_plots_x
+            local sy = (y + y_shift) % self.num_plots_y
+            self.plot_types[y * self.num_plots_x + x + 1] = buffer[sy * self.num_plots_x + sx + 1]
+        end
+    end
 end
+
 -------------------------------------------------------------------------------------------
 function FractalWorld:DetermineXShift()
 	--[[ This function will align the most water-heavy vertical portion of the map with the 
