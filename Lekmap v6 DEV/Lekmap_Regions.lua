@@ -746,6 +746,9 @@ function Lekmap_Regions.Generate(args)
     local num_civs           = args.numCivs or 0
     local coastal_data       = args.coastalData
     local next_to_coast_data = args.nextToCoastData
+    if not coastal_data or not next_to_coast_data then
+        coastal_data, next_to_coast_data = Lekmap_Utilities.GenerateNextToCoastalLandDataTables()
+    end
 
     if num_civs == 0 then
         print("  WARNING: numCivs is 0, no regions will be generated.")

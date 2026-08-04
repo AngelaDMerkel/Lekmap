@@ -44,6 +44,7 @@ local region_assignments = {}
 
 --- Number of city states discarded (failed placement).
 local num_discarded = 0
+local city_state_player_ids = {}
 
 --- Cached coastal data tables (generated once).
 local plot_data_is_coastal = nil
@@ -168,6 +169,15 @@ function Lekmap_CityStates.CanPlaceAt(x, y, area_id, force_placement, ignore_col
         return false
     end
 
+    -- Hard exclusions also apply when a soft regional preference is relaxed.
+    if plot:IsNaturalWonder() or Lekmap_Resources.IsCollision(x, y) then return false end
+    for _, start in Lekmap_Utilities.OrderedPairs(Lekmap_Spawns.GetAllStartPlots()) do
+        if Map.PlotDistance(x, y, start.x, start.y) < 5 then return false end
+    end
+    for _, start in Lekmap_Utilities.OrderedPairs(city_state_plots) do
+        if Map.PlotDistance(x, y, start.x, start.y) < 5 then return false end
+    end
+
     -- Terrain/plot type restrictions.
     local plot_type = plot:GetPlotType()
     if plot_type == PlotTypes.PLOT_OCEAN or plot_type == PlotTypes.PLOT_MOUNTAIN then
@@ -235,13 +245,6 @@ function Lekmap_CityStates.SelectPlot(coastal_list, inland_list, check_proximity
     local function TryList(plot_list)
         if #plot_list == 0 then return nil, nil, false end
 
-        if not check_collision then
-            -- No collision check: random pick.
-            local roll = Map.Rand(#plot_list, "CS plot selection") + 1
-            local px, py = IndexToXY(plot_list[roll])
-            return px, py, true
-        end
-
         -- Collision check: shuffle and iterate.
         local shuffled = {}
         for _, v in ipairs(plot_list) do table.insert(shuffled, v) end
@@ -249,7 +252,7 @@ function Lekmap_CityStates.SelectPlot(coastal_list, inland_list, check_proximity
 
         for _, candidate in ipairs(shuffled) do
             local cx, cy = IndexToXY(candidate)
-            if not Lekmap_Resources.IsCollision(cx, cy) then
+            if Lekmap_CityStates.CanPlaceAt(cx, cy, -1, not check_proximity, false, 0) then
                 if not check_proximity or not Lekmap_Impact.IsImpacted(IMPACT_LAYER.CITY_STATE, cx, cy) then
                     return cx, cy, true
                 end
@@ -392,7 +395,7 @@ function Lekmap_CityStates.RecordPlacement(cs_number, x, y, region_number)
     validity_table[cs_number] = true
 
     -- Set the engine start plot for this city state player.
-    local city_state_id = cs_number + GameDefines.MAX_MAJOR_CIVS - 1
+    local city_state_id = city_state_player_ids[cs_number]
     local city_state = Players[city_state_id]
     if city_state then
         local start_plot = Map.GetPlot(x, y)
@@ -620,7 +623,7 @@ local function AttemptToPlaceHills(x, y)
     if not plot then return false end
     if plot:GetResourceType(-1) ~= -1 then return false end
     local plot_type = plot:GetPlotType()
-    if plot_type == PlotTypes.PLOT_OCEAN then return false end
+    if plot_type ~= PlotTypes.PLOT_LAND or plot:IsNaturalWonder() or Lekmap_Resources.IsCollision(x, y) then return false end
     if plot:IsRiverSide() then return false end
     if plot:GetFeatureType() == FeatureTypes.FEATURE_FOREST then return false end
     plot:SetPlotType(PlotTypes.PLOT_HILLS, false, true)
@@ -631,105 +634,28 @@ end
 --- Attempt to place a food bonus at a plot. Returns placed_bonus, placed_oasis, placed_fish.
 local function AttemptToPlaceBonus(x, y, allow_oasis, fish_count)
     local plot = Map.GetPlot(x, y)
-    if not plot then return false, false, false end
-    if plot:GetResourceType(-1) ~= -1 then return false, false, false end
-
-    local terrain_type = plot:GetTerrainType()
-    if terrain_type == TerrainTypes.TERRAIN_SNOW then return false, false, false end
-
-    local feature_type = plot:GetFeatureType()
-    if feature_type == FeatureTypes.FEATURE_OASIS then return false, false, false end
-
-    local plot_type = plot:GetPlotType()
-
-    -- Ocean: place fish.
-    if plot_type == PlotTypes.PLOT_OCEAN then
-        if fish_count > 0 and terrain_type == TerrainTypes.TERRAIN_COAST
-        and feature_type == FeatureTypes.NO_FEATURE and not plot:IsLake() then
-            local fish_id = Lekmap_ResourceDefs.GetID("FISH")
-            if fish_id then
-                plot:SetResourceType(fish_id, 1)
-                return true, false, true
-            end
-        end
+    if not plot or plot:IsMountain() or plot:IsNaturalWonder()
+        or Lekmap_Resources.IsCollision(x, y) or plot:GetResourceType(-1) ~= -1 then
         return false, false, false
     end
-
-    -- Jungle: banana.
-    if feature_type == FeatureTypes.FEATURE_JUNGLE then
-        local banana_id = Lekmap_ResourceDefs.GetID("BANANA")
-        if banana_id then
-            plot:SetResourceType(banana_id, 1)
-            return true, false, false
-        end
-        return false, false, false
+    local terrain, feature = plot:GetTerrainType(), plot:GetFeatureType()
+    if terrain == TerrainTypes.TERRAIN_SNOW or feature == FeatureTypes.FEATURE_OASIS then return false, false, false end
+    if plot:IsWater() then
+        local placed = fish_count > 0 and Lekmap_Resources.PlaceOne(x, y, "FISH", 1)
+        return placed, false, placed
     end
-
-    -- Forest: deer.
-    if feature_type == FeatureTypes.FEATURE_FOREST then
-        local deer_id = Lekmap_ResourceDefs.GetID("DEER")
-        if deer_id then
-            plot:SetResourceType(deer_id, 1)
-            return true, false, false
-        end
-        return false, false, false
+    local key
+    if feature == FeatureTypes.FEATURE_JUNGLE then key = "BANANA"
+    elseif feature == FeatureTypes.FEATURE_FOREST or plot:IsHills() or terrain == TerrainTypes.TERRAIN_TUNDRA then key = "DEER"
+    elseif feature == FeatureTypes.FEATURE_FLOOD_PLAINS or terrain == TerrainTypes.TERRAIN_PLAINS then key = "WHEAT"
+    elseif terrain == TerrainTypes.TERRAIN_GRASS then key = "COW"
+    elseif terrain == TerrainTypes.TERRAIN_DESERT and not plot:IsFreshWater() and allow_oasis
+        and plot:CanHaveFeature(FeatureTypes.FEATURE_OASIS) then
+        plot:SetFeatureType(FeatureTypes.FEATURE_OASIS, -1)
+        Lekmap_Resources.RefreshPlotCacheAt(x, y)
+        return true, true, false
     end
-
-    -- Hills with no feature (not desert): add forest + deer.
-    if plot_type == PlotTypes.PLOT_HILLS and feature_type == FeatureTypes.NO_FEATURE
-    and terrain_type ~= TerrainTypes.TERRAIN_DESERT then
-        local deer_id = Lekmap_ResourceDefs.GetID("DEER")
-        if deer_id then
-            plot:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1)
-            plot:SetResourceType(deer_id, 1)
-            return true, false, false
-        end
-        return false, false, false
-    end
-
-    -- Flat land possibilities.
-    if plot_type == PlotTypes.PLOT_LAND then
-        -- Desert with fresh water: add oasis if allowed.
-        if terrain_type == TerrainTypes.TERRAIN_DESERT and plot:IsFreshWater() == false and allow_oasis then
-            plot:SetFeatureType(FeatureTypes.FEATURE_OASIS, -1)
-            return true, true, false
-        end
-        -- Flood plains: wheat.
-        if feature_type == FeatureTypes.FEATURE_FLOOD_PLAINS then
-            local wheat_id = Lekmap_ResourceDefs.GetID("WHEAT")
-            if wheat_id then
-                plot:SetResourceType(wheat_id, 1)
-                return true, false, false
-            end
-        end
-        -- Grass: cow or wheat.
-        if terrain_type == TerrainTypes.TERRAIN_GRASS and feature_type == FeatureTypes.NO_FEATURE then
-            local cow_id = Lekmap_ResourceDefs.GetID("COW")
-            if cow_id then
-                plot:SetResourceType(cow_id, 1)
-                return true, false, false
-            end
-        end
-        -- Plains: wheat.
-        if terrain_type == TerrainTypes.TERRAIN_PLAINS and feature_type == FeatureTypes.NO_FEATURE then
-            local wheat_id = Lekmap_ResourceDefs.GetID("WHEAT")
-            if wheat_id then
-                plot:SetResourceType(wheat_id, 1)
-                return true, false, false
-            end
-        end
-        -- Tundra: deer.
-        if terrain_type == TerrainTypes.TERRAIN_TUNDRA and feature_type == FeatureTypes.NO_FEATURE then
-            local deer_id = Lekmap_ResourceDefs.GetID("DEER")
-            if deer_id then
-                plot:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1)
-                plot:SetResourceType(deer_id, 1)
-                return true, false, false
-            end
-        end
-    end
-
-    return false, false, false
+    return key and Lekmap_Resources.PlaceOne(x, y, key, 1) or false, false, false
 end
 
 ------------------------------------------------------------------------------
@@ -944,7 +870,7 @@ end
 
 --- Normalize all valid city state locations.
 function Lekmap_CityStates.NormalizeAll()
-    for cs_number, data in pairs(city_state_plots) do
+    for cs_number, data in Lekmap_Utilities.OrderedPairs(city_state_plots) do
         if validity_table[cs_number] then
             Lekmap_CityStates.NormalizeLocation(data.x, data.y)
         end
@@ -968,6 +894,9 @@ function Lekmap_CityStates.PlaceAll(args)
     local num_city_states = args.numCityStates or 0
     local num_civs       = args.numCivs or Lekmap_Regions.GetRegionCount()
     local method         = args.method or 1
+    local _, _, _, _, _, _, alive_minor_ids = Lekmap_Utilities.GetPlayerAndTeamInfo()
+    city_state_player_ids = args.playerList or alive_minor_ids
+    assert(#city_state_player_ids == num_city_states, "City-state count does not match alive player slots")
 
     map_width, map_height = Map.GetGridSize()
     print("Lekmap_CityStates: Placing " .. num_city_states .. " city states.")
@@ -1053,7 +982,7 @@ function Lekmap_CityStates.PlaceAll(args)
         end
 
         if num_discarded > 0 then
-            print("Lekmap_CityStates: DISCARDING " .. num_discarded .. " city states - no eligible sites remain.")
+            error("Lekmap: unable to place " .. num_discarded .. " city-states legally. Increase map size or reduce city-state count.")
         end
     end
 

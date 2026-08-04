@@ -444,7 +444,7 @@ function Lekmap_Strategics.PlaceAtStarts(args)
     local start_plots = Lekmap_Spawns.GetAllStartPlots()
     if not start_plots then return end
 
-    for region_index, start_plot in pairs(start_plots) do
+    for region_index, start_plot in Lekmap_Utilities.OrderedPairs(start_plots) do
         if start_plot and start_plot.x and start_plot.y then
             for _, rule in ipairs(Lekmap_Strategics.GetStartRules(args.startQuality)) do
                 local resource_id = Lekmap_ResourceDefs.GetID(rule.key)

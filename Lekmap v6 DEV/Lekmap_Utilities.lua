@@ -22,6 +22,23 @@ Lekmap_Utilities = {}
 -- TABLE HELPERS
 ------------------------------------------------------------------------------
 
+-- Lua hash iteration order is not a multiplayer contract. Use ordered keys in
+-- passes that consume randomness or compete for the same plots.
+function Lekmap_Utilities.OrderedPairs(tbl)
+    local keys = {}
+    for key in pairs(tbl) do keys[#keys + 1] = key end
+    table.sort(keys, function(a, b)
+        if type(a) == type(b) then return a < b end
+        return tostring(a) < tostring(b)
+    end)
+    local index = 0
+    return function()
+        index = index + 1
+        local key = keys[index]
+        if key ~= nil then return key, tbl[key] end
+    end
+end
+
 --- Checks whether a value exists in a table.
 --- @param  tbl    table to search
 --- @param  value  value to find
@@ -137,6 +154,7 @@ function Lekmap_Utilities.GetPlayerAndTeamInfo()
     local num_civs = 0
     local num_city_states = 0
     local player_id_list = {}
+    local city_state_ids = {}
 
     for player_index = 0, GameDefines.MAX_MAJOR_CIVS - 1 do
         local player = Players[player_index]
@@ -150,6 +168,7 @@ function Lekmap_Utilities.GetPlayerAndTeamInfo()
         local player = Players[player_index]
         if player:IsEverAlive() then
             num_city_states = num_city_states + 1
+            table.insert(city_state_ids, player_index)
         end
     end
 
@@ -175,7 +194,7 @@ function Lekmap_Utilities.GetPlayerAndTeamInfo()
     end
 
     return num_civs, num_city_states, player_id_list, is_team_game,
-           teams_with_major_civs, num_civs_per_team
+           teams_with_major_civs, num_civs_per_team, city_state_ids
 end
 
 ------------------------------------------------------------------------------
@@ -392,8 +411,7 @@ end
 --- @return is_coastal  boolean lookup table indexed by plot index
 function Lekmap_Utilities.GenerateCoastalLandDataTable()
     local map_width, map_height = Map.GetGridSize()
-    local is_coastal = {}
-    table.fill(is_coastal, false, map_width * map_height)
+    local is_coastal = table.fill(false, map_width * map_height)
 
     for x = 0, map_width - 1 do
         for y = 0, map_height - 1 do
@@ -410,8 +428,7 @@ end
 function Lekmap_Utilities.GenerateNextToCoastalLandDataTables()
     local is_coastal = Lekmap_Utilities.GenerateCoastalLandDataTable()
     local map_width, map_height = Map.GetGridSize()
-    local is_next_to_coast = {}
-    table.fill(is_next_to_coast, false, map_width * map_height)
+    local is_next_to_coast = table.fill(false, map_width * map_height)
 
     for x = 0, map_width - 1 do
         for y = 0, map_height - 1 do
@@ -435,8 +452,7 @@ end
 --- @return is_three_from_coast  boolean lookup table
 function Lekmap_Utilities.GenerateThreeFromCoastTable(is_coastal, is_next_to_coast)
     local map_width, map_height = Map.GetGridSize()
-    local is_three_from_coast = {}
-    table.fill(is_three_from_coast, false, map_width * map_height)
+    local is_three_from_coast = table.fill(false, map_width * map_height)
 
     for x = 0, map_width - 1 do
         for y = 0, map_height - 1 do
@@ -462,8 +478,7 @@ function Lekmap_Utilities.GenerateMainlandCoastDataTable()
     local map_width, map_height = Map.GetGridSize()
     local biggest_area = Map.FindBiggestArea(false)
     local mainland_area_id = biggest_area:GetID()
-    local is_mainland_coast = {}
-    table.fill(is_mainland_coast, false, map_width * map_height)
+    local is_mainland_coast = table.fill(false, map_width * map_height)
 
     for x = 0, map_width - 1 do
         for y = 0, map_height - 1 do
@@ -480,8 +495,7 @@ end
 function Lekmap_Utilities.GenerateMainlandExpandedCoastData()
     local is_mainland_coast = Lekmap_Utilities.GenerateMainlandCoastDataTable()
     local map_width, map_height = Map.GetGridSize()
-    local is_expanded_coast = {}
-    table.fill(is_expanded_coast, false, map_width * map_height)
+    local is_expanded_coast = table.fill(false, map_width * map_height)
 
     for x = 0, map_width - 1 do
         for y = 0, map_height - 1 do
@@ -506,8 +520,7 @@ end
 --- @return is_three_from_mainland  boolean lookup table
 function Lekmap_Utilities.GenerateThreeFromMainlandCoast(is_mainland_coast, is_expanded_coast)
     local map_width, map_height = Map.GetGridSize()
-    local is_three_from_mainland = {}
-    table.fill(is_three_from_mainland, false, map_width * map_height)
+    local is_three_from_mainland = table.fill(false, map_width * map_height)
 
     for x = 0, map_width - 1 do
         for y = 0, map_height - 1 do

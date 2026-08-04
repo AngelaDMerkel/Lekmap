@@ -567,6 +567,18 @@ end
 --  @param thresholds     optional override for quality thresholds
 --  @return x, y, score, success, forced
 ------------------------------------------------------------------------------
+-- Hard legality is separate from the existing yield score and soft spacing
+-- ripples. Even a fallback must be habitable and clear of earlier starts.
+function Lekmap_Spawns.IsLegalStart(x, y, minimum_distance)
+    local plot = Map.GetPlot(x, y)
+    if not plot or plot:IsWater() or plot:IsMountain() or plot:IsNaturalWonder()
+        or plot:GetFeatureType() == FeatureTypes.FEATURE_OASIS then return false end
+    for _, start in Lekmap_Utilities.OrderedPairs(start_plots) do
+        if Map.PlotDistance(x, y, start.x, start.y) < (minimum_distance or 5) then return false end
+    end
+    return true
+end
+
 function Lekmap_Spawns.FindStartInRegion(region_index, constraints, thresholds)
     thresholds  = thresholds or DEFAULT_THRESHOLDS
     constraints = constraints or {}
@@ -603,7 +615,8 @@ function Lekmap_Spawns.FindStartInRegion(region_index, constraints, thresholds)
             local plot_type = plot:GetPlotType()
 
             if plot_type == PlotTypes.PLOT_HILLS or plot_type == PlotTypes.PLOT_LAND then
-                local dominated = false
+                local minimum_distance = constraints.minimum_distance or ({6, 8, 10})[settings.start_distance or 2]
+                local dominated = not Lekmap_Spawns.IsLegalStart(px, py, minimum_distance)
 
                 -- Hard filter: coastal requirement.
                 if not dominated and constraints.require_coastal then
@@ -620,7 +633,7 @@ function Lekmap_Spawns.FindStartInRegion(region_index, constraints, thresholds)
                 end
 
                 -- Skip plots too close to ocean (2 or 3 tiles from coast) for non-coastal starts.
-                if not dominated and not constraints.require_coastal then
+                if not dominated and not constraints.require_coastal and not constraints.relax_preferences then
                     if plot_data_is_next_to_coast[plot_index] == true then dominated = true end
                     if not dominated and plot_data_is_three_from_coast[plot_index] == true then dominated = true end
                 end
@@ -736,13 +749,24 @@ function Lekmap_Spawns.FindStartInRegion(region_index, constraints, thresholds)
         return best_fallback[1], best_fallback[2], best_fallback[3], true, false
     end
 
-    -- Absolute last resort: force a grass tile in the SW corner of the region.
-    local force_plot = Map.GetPlot(west_x % map_width, south_y % map_height)
-    force_plot:SetPlotType(PlotTypes.PLOT_LAND, false, true)
-    force_plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, true)
-    force_plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1)
-    print("Lekmap_Spawns: FORCED placement in region " .. region_index)
-    return west_x % map_width, south_y % map_height, 0, true, true
+    -- Relax preferences in a defined order, never invent land or overlap a
+    -- capital. Keep the region model and yield scoring of the original rewrite.
+    local relaxed = {}
+    for key, value in pairs(constraints) do relaxed[key] = value end
+    if not constraints.relax_preferences then
+        relaxed.relax_preferences = true
+        relaxed.no_coast = false
+    elseif constraints.require_coastal then
+        relaxed.require_coastal = false
+    elseif (constraints.minimum_distance or 8) > 5 then
+        relaxed.minimum_distance = 5
+    else
+        return nil, nil, 0, false, false
+    end
+    print("Lekmap_Spawns: relaxing start preference in region " .. region_index)
+    local x, y, score, success = Lekmap_Spawns.FindStartInRegion(region_index, relaxed, thresholds)
+    return x, y, score, success, success
+
 end
 
 ------------------------------------------------------------------------------
@@ -796,7 +820,7 @@ function Lekmap_Spawns.GatherCivBiases(player_list, coastal_is_hard, balanced_co
     if balanced_coastal then
         local num_regions    = Lekmap_Regions.GetRegionCount()
         local existing_coast = 0
-        for _, bias_entry in pairs(biases) do
+        for _, bias_entry in Lekmap_Utilities.OrderedPairs(biases) do
             if bias_entry.coastal then existing_coast = existing_coast + 1 end
         end
         local chances = BALANCED_COASTAL_CHANCES[num_regions]
@@ -813,7 +837,7 @@ function Lekmap_Spawns.GatherCivBiases(player_list, coastal_is_hard, balanced_co
                 -- Promote random non-coastal civs.
                 if extra_coast > 0 then
                     local non_coastal_players = {}
-                    for player_id, bias_entry in pairs(biases) do
+                    for player_id, bias_entry in Lekmap_Utilities.OrderedPairs(biases) do
                         if not bias_entry.coastal then
                             table.insert(non_coastal_players, player_id)
                         end
@@ -886,7 +910,7 @@ function Lekmap_Spawns.ScoreRegionForCiv(region_index, bias, assigned)
     if assigned then
         -- Simple heuristic: penalise if a nearby region is already taken.
         -- (More sophisticated distance checks can be added later.)
-        for taken_region, _ in pairs(assigned) do
+        for taken_region, _ in Lekmap_Utilities.OrderedPairs(assigned) do
             if taken_region ~= region_index then
                 score = score - 2
             end
@@ -928,6 +952,7 @@ function Lekmap_Spawns.AssignRegions(biases, player_list)
         -- Priority: place_first > coastal_hard > coastal > others
         local priority_a = (bias_a.place_first and 3) or (bias_a.coastal_hard and 2) or (bias_a.coastal and 1) or 0
         local priority_b = (bias_b.place_first and 3) or (bias_b.coastal_hard and 2) or (bias_b.coastal and 1) or 0
+        if priority_a == priority_b then return a < b end
         return priority_a > priority_b
     end)
 
@@ -975,7 +1000,7 @@ function Lekmap_Spawns.AssignRegions(biases, player_list)
             assigned[best_region]    = player_num
             print("Lekmap_Spawns: Player " .. player_num .. " -> Region " .. best_region .. " (score " .. best_score .. ")")
         else
-            print("Lekmap_Spawns: ERROR - could not assign region for player " .. player_num)
+            error("Lekmap: could not assign a region for player " .. player_num .. ". Increase map size or reduce the player count.")
         end
     end
 
@@ -1135,6 +1160,7 @@ function Lekmap_Spawns.ChooseLocations(args)
     table.sort(region_order, function(a, b)
         local region_a = Lekmap_Regions.GetRegion(a)
         local region_b = Lekmap_Regions.GetRegion(b)
+        if region_a.avgFertility == region_b.avgFertility then return a < b end
         return (region_a.avgFertility or 0) < (region_b.avgFertility or 0)
     end)
 
@@ -1143,14 +1169,14 @@ function Lekmap_Spawns.ChooseLocations(args)
     start_plots = {}
     start_conditions = {}
     region_to_player = {}
-    for pn, ri in pairs(assignments) do
+    for pn, ri in Lekmap_Utilities.OrderedPairs(assignments) do
         region_to_player[ri] = pn
     end
 
     for _, region_index in ipairs(region_order) do
         -- Find which player is assigned to this region.
         local player_num = nil
-        for pn, ri in pairs(assignments) do
+        for pn, ri in Lekmap_Utilities.OrderedPairs(assignments) do
             if ri == region_index then player_num = pn break end
         end
 
@@ -1169,15 +1195,15 @@ function Lekmap_Spawns.ChooseLocations(args)
                 RecordStartConditions(region_index, start_x, start_y)
                 PlaceSpawnImpact(start_x, start_y, settings.collide_coastals)
                 print(string.format("  Region %d -> Player %d at (%d, %d) score=%d%s",
-                    region_index, player_num, start_x, start_y, score, forced and " [FORCED]" or ""))
+                    region_index, player_num, start_x, start_y, score, forced and " [PREFERENCE RELAXED]" or ""))
             else
-                print("Lekmap_Spawns: FAILED to place start for region " .. region_index)
+                error("Lekmap: no legal start in region " .. region_index .. ". Increase map size or reduce the player count.")
             end
         end
     end
 
     -- Set starting plots on player objects.
-    for player_num, region_index in pairs(assignments) do
+    for player_num, region_index in Lekmap_Utilities.OrderedPairs(assignments) do
         local start_data = start_plots[region_index]
         if start_data then
             local player = Players[player_num]

@@ -417,7 +417,7 @@ local function MergeSlotRow(base, overlay)
         return base
     end
     local out = CopySlotRow(base)
-    for k, v in pairs(overlay) do
+    for k, v in Lekmap_Utilities.OrderedPairs(overlay) do
         out[k] = v
     end
     return out
@@ -797,7 +797,7 @@ function Lekmap_Bonus.PlaceAllCityStateStartBonuses()
     if not all then
         return
     end
-    for cs_number, _ in pairs(all) do
+    for cs_number, _ in Lekmap_Utilities.OrderedPairs(all) do
         Lekmap_Bonus.PlaceCityStateStartBonus(cs_number)
     end
 end
@@ -857,7 +857,7 @@ local function BuildMajorSpawnExclusionSet(num_rings)
     if not starts then
         return excluded
     end
-    for _, sp in pairs(starts) do
+    for _, sp in Lekmap_Utilities.OrderedPairs(starts) do
         if sp and sp.x ~= nil and sp.y ~= nil then
             AddRingsToExclusion(excluded, map_width, sp.x, sp.y, num_rings)
         end
@@ -876,7 +876,7 @@ local function BuildCityStateSpawnExclusionSet(num_rings)
     if not all then
         return excluded
     end
-    for _, pdata in pairs(all) do
+    for _, pdata in Lekmap_Utilities.OrderedPairs(all) do
         if pdata and pdata.x ~= nil and pdata.y ~= nil then
             AddRingsToExclusion(excluded, map_width, pdata.x, pdata.y, num_rings)
         end
@@ -891,14 +891,14 @@ local function BuildWorldScatterSpawnExclusion(wcfg)
     local major_rings = wcfg.major_spawn_clear_rings
     if major_rings and major_rings >= 1 then
         local major_set = BuildMajorSpawnExclusionSet(major_rings)
-        for plot_index, _ in pairs(major_set) do
+        for plot_index, _ in Lekmap_Utilities.OrderedPairs(major_set) do
             excluded_plot_indices[plot_index] = true
         end
     end
     local city_state_rings = wcfg.city_state_spawn_clear_rings
     if city_state_rings and city_state_rings >= 1 then
         local cs_set = BuildCityStateSpawnExclusionSet(city_state_rings)
-        for plot_index, _ in pairs(cs_set) do
+        for plot_index, _ in Lekmap_Utilities.OrderedPairs(cs_set) do
             excluded_plot_indices[plot_index] = true
         end
     end
