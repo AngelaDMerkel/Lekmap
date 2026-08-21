@@ -385,6 +385,30 @@ end
 -- distribution.
 ------------------------------------------------------------------------------
 
+-- Distinguish the main ocean from enclosed seas by water-area identity.
+-- Fresh water on a land tile may come from a river; it cannot identify a sea.
+function Lekmap_Utilities.GetWaterKind(plot)
+    if not plot or not plot:IsWater() then return nil end
+    if plot:IsLake() then return "lake" end
+    local ocean = Map.FindBiggestArea(true)
+    if ocean and plot:GetArea() == ocean:GetID() then return "ocean" end
+    return "inland_sea"
+end
+
+function Lekmap_Utilities.AdjacentToOcean(x, y)
+    local plot = Map.GetPlot(x, y)
+    return plot and not plot:IsWater() and Lekmap_Utilities.AnyAdjacentSatisfies(x, y, function(other)
+        return Lekmap_Utilities.GetWaterKind(other) == "ocean"
+    end) or false
+end
+
+function Lekmap_Utilities.AdjacentToInlandSea(x, y)
+    local plot = Map.GetPlot(x, y)
+    return plot and not plot:IsWater() and Lekmap_Utilities.AnyAdjacentSatisfies(x, y, function(other)
+        return Lekmap_Utilities.GetWaterKind(other) == "inland_sea"
+    end) or false
+end
+
 --- Returns true if the plot at (x, y) is land adjacent to salt water.
 function Lekmap_Utilities.AdjacentToSaltWater(x, y)
     local plot = Map.GetPlot(x, y)
@@ -415,7 +439,7 @@ function Lekmap_Utilities.GenerateCoastalLandDataTable()
 
     for x = 0, map_width - 1 do
         for y = 0, map_height - 1 do
-            if Lekmap_Utilities.AdjacentToSaltWater(x, y) then
+            if Lekmap_Utilities.AdjacentToOcean(x, y) then
                 is_coastal[Lekmap_Utilities.PlotIndex(x, y)] = true
             end
         end

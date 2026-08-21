@@ -610,17 +610,14 @@ end
 
 local function PlotTouchesOcean(plot)
     if not plot then return false end
-    for np in Lekmap_HexUtil.PlotRingIterator(plot, 1) do
-        if np:GetPlotType() == PlotTypes.PLOT_OCEAN then
-            return true
-        end
-    end
-    return false
+    if plot:IsWater() then return Lekmap_Utilities.GetWaterKind(plot) == "ocean" end
+    return Lekmap_Utilities.AdjacentToOcean(plot:GetX(), plot:GetY())
 end
 
 local function PlotIsInlandSeaCoastalLandPlot(plot)
     if not plot then return false end
-    return plot:IsCoastalLand() and plot:IsFreshWater() and not PlotTouchesOcean(plot)
+    if plot:IsWater() then return Lekmap_Utilities.GetWaterKind(plot) == "inland_sea" end
+    return Lekmap_Utilities.AdjacentToInlandSea(plot:GetX(), plot:GetY())
 end
 
 --- Option 17: start plot qualifies for one guaranteed WHALE/CRAB/PEARLS near capital.
@@ -757,7 +754,8 @@ local function PickWeightedRing(weights_by_ring, max_ring)
 end
 
 --- Try to place one luxury at (x,y); uses Lekmap_Resources.PlaceOne (luxury impact from class).
-local function TryPlaceLuxuryAt(key, x, y)
+local function TryPlaceLuxuryAt(key, x, y, start_plot, radius)
+    if start_plot and not Lekmap_Resources.CanSupplyStart(key, x, y, start_plot, radius) then return false end
     if Lekmap_Resources.IsCollision(x, y) then
         return false
     end
@@ -804,7 +802,7 @@ local function PlaceLuxuriesRingWeighted(start_plot, key, count, weights_by_ring
             local i0 = plot_index - 1
             local y = math.floor(i0 / map_w)
             local x = i0 - y * map_w
-            if TryPlaceLuxuryAt(key, x, y) then
+            if TryPlaceLuxuryAt(key, x, y, start_plot, desperate_ring_max) then
                 left = left - 1
                 placed_this = true
                 break
@@ -819,7 +817,7 @@ local function PlaceLuxuriesRingWeighted(start_plot, key, count, weights_by_ring
                 local i0 = plot_index - 1
                 local yy = math.floor(i0 / map_w)
                 local xx = i0 - yy * map_w
-                if TryPlaceLuxuryAt(key, xx, yy) then
+                if TryPlaceLuxuryAt(key, xx, yy, start_plot, desperate_ring_max) then
                     left = left - 1
                     placed_this = true
                     break
@@ -834,7 +832,7 @@ local function PlaceLuxuriesRingWeighted(start_plot, key, count, weights_by_ring
                 local i0 = plot_index - 1
                 local yy = math.floor(i0 / map_w)
                 local xx = i0 - yy * map_w
-                if TryPlaceLuxuryAt(key, xx, yy) then
+                if TryPlaceLuxuryAt(key, xx, yy, start_plot, desperate_ring_max) then
                     left = left - 1
                     placed_this = true
                     break

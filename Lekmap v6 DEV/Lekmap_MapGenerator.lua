@@ -23,6 +23,7 @@ include("Lekmap_Bonus");  -- regional start bonuses (majors + city-states)
 include("Lekmap_Spawns");
 include("Lekmap_NaturalWonders");
 include("Lekmap_CityStates");
+include("Lekmap_Validation");
 
 ------------------------------------------------------------------------------
 --	Various Map utility functions
@@ -787,6 +788,7 @@ function StartPlotSystem()
 end
 
 function GenerateMap()
+    _plots = {}; -- Engine plot objects may change when generating another map.
 	print("Generating Map");
 	-- This is the core map generation function.
 	-- Every step in this process carries dependencies upon earlier steps.

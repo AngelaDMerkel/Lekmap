@@ -35,6 +35,7 @@ local map_width, map_height = 0, 0
 --- Each entry: { plot_type, terrain_type, feature_type, is_hill, is_flat, is_water, is_coast,
 ---               adjacent_to_land, is_lake, has_resource, is_mountain, x, y }
 local plot_cache = {}
+local reachability_cache = {}
 
 --- Collision data: plots occupied by player starts, CS starts, or natural wonders.
 local collision_data = {}
@@ -226,6 +227,10 @@ function Lekmap_Resources.RefreshPlotCacheAt(x, y)
     local plot = Map.GetPlot(x, y)
     if not plot then return end
     local i = y * map_width + x + 1
+    local previous = plot_cache[i]
+    if not previous or previous.plot_type ~= plot:GetPlotType() or previous.feature_type ~= plot:GetFeatureType() then
+        reachability_cache = {}
+    end
     local plot_type    = plot:GetPlotType()
     local terrain_type = plot:GetTerrainType()
     local feature_type = plot:GetFeatureType()
@@ -492,6 +497,37 @@ end
 --  @param scope         "world" for entire map, or { x, y, radius } for near-plot
 --  @return              shuffled array of 1-based plot indices
 ------------------------------------------------------------------------------
+-- Supply belongs to the nearest major start and must have a passable approach.
+-- Keep region resources and world scatter unconstrained by this opening rule.
+function Lekmap_Resources.CanSupplyStart(resource_key, x, y, origin, radius)
+    local plot = Map.GetPlot(x, y)
+    if not plot or not origin then return false end
+    radius = radius or 3
+    local allow_water = plot:IsWater()
+    local key = origin.x .. ":" .. origin.y .. ":" .. radius .. ":" .. tostring(allow_water)
+    local reachable = reachability_cache[key]
+    if not reachable then
+        reachable = Lekmap_HexUtil.ReachablePlots(origin.x, origin.y, radius, allow_water)
+        reachability_cache[key] = reachable
+    end
+    if reachable[y * map_width + x + 1] == nil then return false end
+    local starts = Lekmap_Spawns.GetAllStartPlots()
+    local own_region
+    for region, start in Lekmap_Utilities.OrderedPairs(starts) do
+        if start.x == origin.x and start.y == origin.y then own_region = region; break end
+    end
+    if own_region then
+        local own_distance = Map.PlotDistance(origin.x, origin.y, x, y)
+        for region, start in Lekmap_Utilities.OrderedPairs(starts) do
+            if region ~= own_region then
+                local distance = Map.PlotDistance(start.x, start.y, x, y)
+                if distance < own_distance or (distance == own_distance and region < own_region) then return false end
+            end
+        end
+    end
+    return true
+end
+
 function Lekmap_Resources.GeneratePlotList(resource_key, scope)
     local active_resource = Lekmap_ResourceDefs.active and Lekmap_ResourceDefs.active[resource_key]
     if not active_resource then return {} end
@@ -516,7 +552,8 @@ function Lekmap_Resources.GeneratePlotList(resource_key, scope)
                     local ry = ring_plot:GetY()
                     local idx = ry * map_width + rx + 1
                     local entry = plot_cache[idx]
-                    if entry and Lekmap_Resources.IsValidPlotForResource(entry, def) then
+                    if entry and Lekmap_Resources.IsValidPlotForResource(entry, def)
+                        and (not scope.start_area or Lekmap_Resources.CanSupplyStart(resource_key, rx, ry, scope, scope.radius)) then
                         table.insert(candidates, idx)
                     end
                 end
@@ -815,6 +852,12 @@ end
 ------------------------------------------------------------------------------
 
 local initialized = false
+
+function Lekmap_Resources.Reset()
+    initialized = false
+    plot_cache, collision_data, amounts_placed, reachability_cache = {}, {}, {}, {}
+    map_width, map_height, total_lux_placed, barren_plots = 0, 0, 0, 0
+end
 
 ------------------------------------------------------------------------------
 --- Initialize the resource system: enum lookups, resource definitions,

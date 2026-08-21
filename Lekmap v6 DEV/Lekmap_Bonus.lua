@@ -367,7 +367,7 @@ local function IsMajorStartInlandSeaCoastalLand(region_index)
         return false
     end
     local plot = Map.GetPlot(sp.x, sp.y)
-    return plot and plot:IsFreshWater() and plot:IsCoastalLand()
+    return plot and Lekmap_Utilities.AdjacentToInlandSea(plot:GetX(), plot:GetY())
 end
 
 --- COASTAL subclass (fish) applies on ocean coast, or on inland sea coast when map AllowInlandSea is on.
@@ -383,14 +383,14 @@ end
 
 --- City-state tile: ocean-adjacent or (with AllowInlandSea) inland sea coastal land.
 local function IsCityStateCoastalForBonuses(x, y)
-    if Lekmap_Utilities.AdjacentToSaltWater(x, y) then
+    if Lekmap_Utilities.AdjacentToOcean(x, y) then
         return true
     end
     if not Lekmap_Spawns.GetAllowInlandSea() then
         return false
     end
     local plot = Map.GetPlot(x, y)
-    return plot and plot:IsFreshWater() and plot:IsCoastalLand()
+    return plot and Lekmap_Utilities.AdjacentToInlandSea(plot:GetX(), plot:GetY())
 end
 
 --- Map region → terrain class id (1–9); invalid values clamp to grass (7).
@@ -621,7 +621,8 @@ local function TryPlaceResourceInRingResolved(start_plot, resource_key, ring, co
     local indices = Lekmap_Resources.GetShuffledRingPlotIndices(start_plot.x, start_plot.y, ring)
     for _, plot_index in ipairs(indices) do
         local x, y = PlotXYFromRingIndex(plot_index)
-        if x and y and Lekmap_Resources.TryPlaceStartBonusAtPlot(resource_key, x, y, context_region_index) then
+        if x and y and Lekmap_Resources.CanSupplyStart(resource_key, x, y, start_plot, 3)
+            and Lekmap_Resources.TryPlaceStartBonusAtPlot(resource_key, x, y, context_region_index) then
             return true
         end
     end
@@ -1200,7 +1201,7 @@ local function BuildOpenCoastSeaPlots(resource_key, skip_lookup, excluded_spawn,
                 if Lekmap_Resources.IsValidPlotForResource(entry, def) then
                     local plot = Map.GetPlot(entry.x, entry.y)
                     if PlotIsBareCoastWaterForScatter(plot) then
-                        if not salt_water_coast_only or not plot:IsFreshWater() then
+                        if not salt_water_coast_only or Lekmap_Utilities.GetWaterKind(plot) == "ocean" then
                             table.insert(raw, i)
                         end
                     end
@@ -1227,7 +1228,7 @@ local function BuildInlandSeaFishPlots(resource_key, skip_lookup, excluded_spawn
             if not (skip_lookup and skip_lookup[i]) then
                 if Lekmap_Resources.IsValidPlotForResource(entry, def) then
                     local plot = Map.GetPlot(entry.x, entry.y)
-                    if PlotIsBareCoastWaterForScatter(plot) and plot:IsFreshWater() then
+                    if PlotIsBareCoastWaterForScatter(plot) and Lekmap_Utilities.GetWaterKind(plot) == "inland_sea" then
                         table.insert(raw, i)
                     end
                 end

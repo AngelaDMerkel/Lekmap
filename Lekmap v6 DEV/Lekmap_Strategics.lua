@@ -454,7 +454,7 @@ function Lekmap_Strategics.PlaceAtStarts(args)
 
                     -- First pass: preferred radius.
                     local plot_list = Lekmap_Resources.GeneratePlotList(rule.key, {
-                        x = start_plot.x, y = start_plot.y, radius = rule.preferred,
+                        x = start_plot.x, y = start_plot.y, radius = rule.preferred, start_area = true,
                     })
                     if #plot_list > 0 then
                         remaining = Lekmap_Resources.PlaceSpecificNumber(
@@ -464,7 +464,7 @@ function Lekmap_Strategics.PlaceAtStarts(args)
                     -- Second pass: expand to max_radius if preferred failed.
                     if remaining > 0 and rule.max_radius > rule.preferred then
                         plot_list = Lekmap_Resources.GeneratePlotList(rule.key, {
-                            x = start_plot.x, y = start_plot.y, radius = rule.max_radius,
+                            x = start_plot.x, y = start_plot.y, radius = rule.max_radius, start_area = true,
                         })
                         if #plot_list > 0 then
                             remaining = Lekmap_Resources.PlaceSpecificNumber(

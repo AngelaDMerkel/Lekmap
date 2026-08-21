@@ -82,7 +82,7 @@ local function CoastalLuxPreferenceBonus(plot, plot_index)
         return 0
     end
     local ocean = plot_data_is_coastal[plot_index] == true
-    local inland_coast = plot:IsCoastalLand() and plot:IsFreshWater()
+    local inland_coast = Lekmap_Utilities.AdjacentToInlandSea(plot:GetX(), plot:GetY())
     if clm == 1 then
         return ocean and COAST_LUX_PREFERENCE_BONUS or 0
     elseif clm == 3 then
@@ -621,7 +621,7 @@ function Lekmap_Spawns.FindStartInRegion(region_index, constraints, thresholds)
                 -- Hard filter: coastal requirement.
                 if not dominated and constraints.require_coastal then
                     local is_ocean_coastal = plot_data_is_coastal[plot_index] == true
-                    local is_inland_coastal = constraints.allow_inland_sea and plot:IsFreshWater() and plot:IsCoastalLand()
+                    local is_inland_coastal = constraints.allow_inland_sea and Lekmap_Utilities.AdjacentToInlandSea(px, py)
                     if not is_ocean_coastal and not is_inland_coastal then
                         dominated = true
                     end
@@ -637,6 +637,10 @@ function Lekmap_Spawns.FindStartInRegion(region_index, constraints, thresholds)
                     if plot_data_is_next_to_coast[plot_index] == true then dominated = true end
                     if not dominated and plot_data_is_three_from_coast[plot_index] == true then dominated = true end
                 end
+
+                if not dominated and not constraints.allow_inland_sea
+                    and Lekmap_Utilities.AdjacentToInlandSea(px, py)
+                    and not plot_data_is_coastal[plot_index] then dominated = true end
 
                 -- Area membership check.
                 if not dominated then
@@ -939,7 +943,7 @@ function Lekmap_Spawns.AssignRegions(biases, player_list)
     local coastal_regions = {}
     for i = 1, num_regions do
         local counts = Lekmap_Regions.GetTerrainCounts(i)
-        if counts and (counts.coastalLand or 0) >= 3 then
+        if counts and ((counts.coastalLand or 0) + (settings.allow_inland_sea and (counts.inlandSeaCoast or 0) or 0)) >= 3 then
             coastal_regions[i] = true
         end
     end
@@ -1052,7 +1056,7 @@ local function RecordStartConditions(region_index, x, y)
 
     local along_ocean   = plot_data_is_coastal[plot_index] == true
     --- Coastal land touching fresh water but not ocean (for inland-sea luxury rules).
-    local along_inland_sea_coast = plot:IsCoastalLand() and plot:IsFreshWater() and not along_ocean
+    local along_inland_sea_coast = Lekmap_Utilities.AdjacentToInlandSea(plot:GetX(), plot:GetY()) and not along_ocean
     local next_to_lake  = plot:IsFreshWater() and not plot:IsRiverSide()
     local is_river      = plot:IsRiverSide()
     local near_river    = false

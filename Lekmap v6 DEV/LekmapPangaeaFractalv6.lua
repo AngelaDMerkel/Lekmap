@@ -1950,6 +1950,7 @@ end
 
 ------------------------------------------------------------------------------
 function StartPlotSystem()
+    Lekmap_Resources.Reset();
 	------------------------------------------------------------------------------
 	-- Read player settings from Custom Options.
 	------------------------------------------------------------------------------
@@ -2080,6 +2081,7 @@ function StartPlotSystem()
 		guaranteedStrategics        = guaranteed_strategics,
 	});
 
+    Lekmap_Validation.AssertValid({ strategicBalance = guaranteed_strategics, startQuality = startQuality });
 	print("Lekmap: StartPlotSystem complete.");
 end
 ------------------------------------------------------------------------------

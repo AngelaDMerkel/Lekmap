@@ -12,6 +12,38 @@
 
 Lekmap_HexUtil = {}
 
+-- Reachability for start-area supply: land never crosses water; sea resources
+-- can be approached through passable land and shallow water. This is a bounded
+-- geographic test, not a simulation of units, technologies or movement costs.
+function Lekmap_HexUtil.ReachablePlots(x, y, radius, allow_water)
+    local width = Map.GetGridSize()
+    local origin = Map.GetPlot(x, y)
+    if not origin then return {} end
+    local seen = { [y * width + x + 1] = 0 }
+    local queue, head = { origin }, 1
+    while head <= #queue do
+        local plot = queue[head]
+        head = head + 1
+        local distance = seen[plot:GetY() * width + plot:GetX() + 1]
+        if distance < radius then
+            for direction = 0, 5 do
+                local next_plot = Map.PlotDirection(plot:GetX(), plot:GetY(), direction)
+                if next_plot then
+                    local index = next_plot:GetY() * width + next_plot:GetX() + 1
+                    local water_ok = not next_plot:IsWater() or
+                        (allow_water and next_plot:GetTerrainType() == TerrainTypes.TERRAIN_COAST)
+                    if seen[index] == nil and water_ok and not next_plot:IsMountain()
+                        and next_plot:GetFeatureType() ~= FeatureTypes.FEATURE_ICE then
+                        seen[index] = distance + 1
+                        queue[#queue + 1] = next_plot
+                    end
+                end
+            end
+        end
+    end
+    return seen
+end
+
 ------------------------------------------------------------------------------
 -- SECTOR AND DIRECTION CONSTANTS
 ------------------------------------------------------------------------------
