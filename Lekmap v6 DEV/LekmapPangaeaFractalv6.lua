@@ -2064,6 +2064,8 @@ function StartPlotSystem()
 	end
 	print("Lekmap: Placing Natural Wonders (" .. tostring(wonderAmount or "world-size default") .. " targeted).");
 	Lekmap_NaturalWonders.PlaceAll({ wonder_amount = wonderAmount });
+    Map.RecalculateAreas();
+    Lekmap_Resources.BuildWorldPlotCache();
 
 	------------------------------------------------------------------------------
 	-- 8. Place resources (luxuries, strategics, bonus).

@@ -183,7 +183,10 @@ end
 --- Basic eligibility: check if the NW impact layer is clear at this plot.
 local function IsPlotEligible(x, y)
     local IMPACT_LAYER = Lekmap_Constants.IMPACT_LAYER
-    return not Lekmap_Impact.IsImpacted(IMPACT_LAYER.NATURAL_WONDER, x, y)
+    local plot = Map.GetPlot(x, y)
+    return plot ~= nil and not plot:IsNaturalWonder() and plot:GetResourceType(-1) == -1
+        and not Lekmap_Resources.IsCollision(x, y)
+        and not Lekmap_Impact.IsImpacted(IMPACT_LAYER.NATURAL_WONDER, x, y)
 end
 
 --- Extended eligibility: check the plot and all 6 adjacent plots.
@@ -214,7 +217,7 @@ local function CheckSpecificWonder(x, y, wonder_num)
     local plot_index = y * map_width + x + 1
 
     -- Custom eligibility method.
-    if xml_data.EligibilityMethodNumber[wonder_num] ~= -1 then
+    if xml_data.EligibilityMethodNumber[wonder_num] and xml_data.EligibilityMethodNumber[wonder_num] ~= -1 then
         if NWCustomEligibility(x, y, xml_data.EligibilityMethodNumber[wonder_num]) == true then
             table.insert(candidate_lists[wonder_num], plot_index)
         end
@@ -423,35 +426,21 @@ function Lekmap_NaturalWonders.GenerateCandidates()
     local ocean_plots = biggest_ocean and biggest_ocean:GetNumTiles() or 0
     world_has_oceans = (ocean_plots > (map_width * map_height) / 4)
 
-    -- Count NWs and build wonder list.
-    num_nw = 0
-    wonder_list = {}
-    xml_row_numbers = {}
-    for row in GameInfo.Natural_Wonder_Placement() do
-        num_nw = num_nw + 1
+    -- Join active feature types to placement rows. DLC/mod tables can contain
+    -- disabled types or sparse IDs; row count is not the active wonder count.
+    num_nw, wonder_list, xml_row_numbers = 0, {}, {}
+    local placement_by_type = {}
+    for row in GameInfo.Natural_Wonder_Placement() do placement_by_type[row.NaturalWonderType] = row end
+    for feature in GameInfo.Features() do
+        local row = placement_by_type[feature.Type]
+        if feature.NaturalWonder and row and (row.OccurrenceFrequency or 1) > 0 then
+            num_nw = num_nw + 1
+            wonder_list[num_nw], xml_row_numbers[num_nw] = feature.Type, row.ID
+        end
     end
     if num_nw == 0 then
-        print("Lekmap_NaturalWonders: No natural wonders defined in XML.")
+        print("Lekmap_NaturalWonders: No active natural wonders with placement rules.")
         return {}
-    end
-
-    local next_num = 1
-    for row in GameInfo.Features() do
-        if row.NaturalWonder == true then
-            wonder_list[next_num] = row.Type
-            next_num = next_num + 1
-        end
-    end
-
-    -- Map wonder types to XML row numbers.
-    for wonder_num = 1, num_nw do
-        local nw_type = wonder_list[wonder_num]
-        for row in GameInfo.Natural_Wonder_Placement() do
-            if row.NaturalWonderType == nw_type then
-                xml_row_numbers[wonder_num] = row.ID
-                break
-            end
-        end
     end
 
     -- Load XML data.
@@ -491,36 +480,27 @@ function Lekmap_NaturalWonders.GenerateCandidates()
             table.insert(eligible_wonders, { wonder_num = wonder_num, count = candidate_counts[wonder_num] })
         end
     end
-    table.sort(eligible_wonders, function(a, b) return a.count < b.count end)
+    table.sort(eligible_wonders, function(a, b)
+        if a.count == b.count then return a.wonder_num < b.wonder_num end
+        return a.count < b.count
+    end)
 
-    -- Build weighted pool from OccurrenceFrequency.
-    local pool = {}
-    local remaining = {}
-    for _, entry in ipairs(eligible_wonders) do
-        table.insert(remaining, entry.wonder_num)
-        local freq = xml_data.OccurrenceFrequency[entry.wonder_num] or 1
-        for _ = 1, freq do
-            table.insert(pool, entry.wonder_num)
-        end
-    end
-
-    -- Select final order by random draws from the weighted pool.
-    local num_to_process = #remaining
-    local final_order = {}
-    for _ = 1, num_to_process do
-        local found = false
-        for _ = 1, 1000 do
-            local roll = Map.Rand(#pool, "NW selection") + 1
-            local candidate = pool[roll]
-            for idx, wonder_num in ipairs(remaining) do
-                if wonder_num == candidate then
-                    table.insert(final_order, candidate)
-                    table.remove(remaining, idx)
-                    found = true
-                    break
-                end
+    -- Weighted draws without replacement. Removing selected wonders makes
+    -- the work bounded and prevents starvation of rare remaining types.
+    local remaining, final_order = {}, {}
+    for _, entry in ipairs(eligible_wonders) do table.insert(remaining, entry.wonder_num) end
+    while #remaining > 0 do
+        local total = 0
+        for _, number in ipairs(remaining) do total = total + (xml_data.OccurrenceFrequency[number] or 1) end
+        local roll = Map.Rand(total, "NW selection")
+        local accumulated = 0
+        for index, number in ipairs(remaining) do
+            accumulated = accumulated + (xml_data.OccurrenceFrequency[number] or 1)
+            if roll < accumulated then
+                table.insert(final_order, number)
+                table.remove(remaining, index)
+                break
             end
-            if found then break end
         end
     end
 
@@ -636,7 +616,7 @@ function Lekmap_NaturalWonders.AttemptToPlace(wonder_num)
         local plot_y = (plot_index - plot_x - 1) / map_width
 
         -- Check NW layer is still clear (another NW may have been placed since candidacy).
-        if not Lekmap_Impact.IsImpacted(IMPACT_LAYER.NATURAL_WONDER, plot_x, plot_y) then
+        if IsCandidateEligible(plot_x, plot_y) then
             local row_num = xml_row_numbers[wonder_num]
             ApplyTileChangesAndPlace(plot_x, plot_y, wonder_num, row_num)
             table.insert(placed_wonders, wonder_num)
