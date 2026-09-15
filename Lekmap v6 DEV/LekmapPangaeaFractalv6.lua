@@ -116,7 +116,7 @@ function GetMapScriptInfo()
 				Values = {
 					"Close",
 					"Normal",
-					"Far - Warning: May sometimes crash during map generation",
+					"Far",
 				},
 				DefaultValue = 2,
 				SortPriority = -79,
@@ -1601,8 +1601,8 @@ function PangaeaFractalWorld:GeneratePlotTypes(args)
 									break;
 								end
 
-								currentX, currentY = nextX, nextY;
 							end
+							currentX, currentY = nextX, nextY;
 						end
 
 						if islLandInRing ~= 0 then
@@ -1732,8 +1732,8 @@ function PangaeaFractalWorld:GeneratePlotTypes(args)
 												end
 											end
 
-											currentX, currentY = nextX, nextY;
 										end
+										currentX, currentY = nextX, nextY;
 									end
 								end
 							end
@@ -2064,7 +2064,7 @@ function StartPlotSystem()
 	end
 	print("Lekmap: Placing Natural Wonders (" .. tostring(wonderAmount or "world-size default") .. " targeted).");
 	Lekmap_NaturalWonders.PlaceAll({ wonder_amount = wonderAmount });
-    Map.RecalculateAreas();
+    -- Keep region area IDs stable until resource placement is complete.
     Lekmap_Resources.BuildWorldPlotCache();
 
 	------------------------------------------------------------------------------

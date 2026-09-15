@@ -595,7 +595,7 @@ function FractalWorld:GeneratePlotTypes(args)
 	local extra_mountains = args.extra_mountains or 0
 	local grain_amount = args.grain_amount or 3
 	local adjust_plates = args.adjust_plates or 1.0
-	local shift_plot_types = args.shift_plot_types or true
+	local shift_plot_types = args.shift_plot_types ~= false
 	local tectonic_islands = args.tectonic_islands or false
 	local hills_ridge_flags = args.hills_ridge_flags or self.fractal_flags
 	local peaks_ridge_flags = args.peaks_ridge_flags or self.fractal_flags

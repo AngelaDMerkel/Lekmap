@@ -431,11 +431,11 @@ function FeatureGenerator:AddAtolls()
 			end
 		end
 	end
-	local alpha_list = GetShuffledCopyOfTable(temp_alpha_list)
-	local beta_list = GetShuffledCopyOfTable(temp_beta_list)
-	local gamma_list = GetShuffledCopyOfTable(temp_gamma_list)
-	local delta_list = GetShuffledCopyOfTable(temp_delta_list)
-	local epsilon_list = GetShuffledCopyOfTable(temp_epsilon_list)
+	local alpha_list = Lekmap_Utilities.GetShuffledCopyOfTable(temp_alpha_list)
+	local beta_list = Lekmap_Utilities.GetShuffledCopyOfTable(temp_beta_list)
+	local gamma_list = Lekmap_Utilities.GetShuffledCopyOfTable(temp_gamma_list)
+	local delta_list = Lekmap_Utilities.GetShuffledCopyOfTable(temp_delta_list)
+	local epsilon_list = Lekmap_Utilities.GetShuffledCopyOfTable(temp_epsilon_list)
 
 	-- Determine maximum number able to be placed, per candidate category.
 	local max_alpha = math.ceil(table.maxn(alpha_list) / 4)

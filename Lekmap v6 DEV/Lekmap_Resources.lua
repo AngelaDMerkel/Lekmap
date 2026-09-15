@@ -403,6 +403,14 @@ end
 --  @param region_index     optional region number (for fallback region-type heuristic)
 --  @return feature_id      engine feature ID to set, or nil
 local function ChooseForceFeature(x, y, candidates, region_index)
+    local plot = Map.GetPlot(x, y)
+    if not plot then return nil end
+    local allowed = {}
+    for _, name in ipairs(candidates) do
+        local id = FEATURE_LOOKUP[name]
+        if id and plot:CanHaveFeature(id) then allowed[#allowed + 1] = name end
+    end
+    candidates = allowed
     if #candidates == 0 then return nil end
     if #candidates == 1 then return FEATURE_LOOKUP[candidates[1]] end
 
@@ -438,7 +446,7 @@ local function ChooseForceFeature(x, y, candidates, region_index)
     if best_count == 0 and region_index then
         local REGION_TYPE = Lekmap_Constants.REGION_TYPE
         local region = Lekmap_Regions.GetRegion(region_index)
-        local rtype = region and region.regionType
+        local rtype = Lekmap_Regions.GetRegionType(region_index)
         if rtype then
             -- Jungle-like regions prefer jungle; otherwise prefer forest.
             local prefer_jungle = (rtype == REGION_TYPE.JUNGLE or rtype == REGION_TYPE.WETLANDS)
@@ -632,7 +640,16 @@ function Lekmap_Resources.CanPlaceAt(resource_key, x, y)
     local active = Lekmap_ResourceDefs.active and Lekmap_ResourceDefs.active[resource_key]
     if not active or not Map.GetPlot(x, y) then return false end
     Lekmap_Resources.RefreshPlotCacheAt(x, y)
-    return Lekmap_Resources.IsValidPlotForResource(plot_cache[y * map_width + x + 1], active.def)
+    local entry = plot_cache[y * map_width + x + 1]
+    if not Lekmap_Resources.IsValidPlotForResource(entry, active.def) then return false end
+    if entry.feature_type == FeatureTypes.NO_FEATURE and active.def.force_valid_feature then
+        local bare_allowed = false
+        for _, terrain in ipairs(active.def.terrains) do
+            if TERRAIN_LOOKUP[terrain] == entry.terrain_type then bare_allowed = true end
+        end
+        if not bare_allowed and not ChooseForceFeature(x, y, active.def.force_valid_feature, nil) then return false end
+    end
+    return true
 end
 
 local function PlaceValidated(x, y, resource_key, quantity, layer, min_radius, max_radius)

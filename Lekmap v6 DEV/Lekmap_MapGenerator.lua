@@ -30,12 +30,10 @@ include("Lekmap_Validation");
 ------------------------------------------------------------------------------
 -- Iterate through plots
 function Shuffle(t)
-	local len = #t;
-	local random = Map.Rand;
-	for i = 1, len, 1 do
-		local k = random(len - 1, "Shuffling Values") + 1;
-		t[i], t[k] = t[k], t[i];
-	end
+    for i = #t, 2, -1 do
+        local j = Map.Rand(i, "Shuffling Values") + 1;
+        t[i], t[j] = t[j], t[i];
+    end
 end
 
 local _plots = {}; --memoize table of plots
@@ -194,7 +192,7 @@ end
 function GenerateCoasts(args)
 	print("Setting coasts and oceans (MapGenerator.Lua)");
 	local args = args or {};
-	local bExpandCoasts = args.bExpandCoasts or true;
+	local bExpandCoasts = args.bExpandCoasts ~= false;
 	local expansion_diceroll_table = args.expansion_diceroll_table or {2, 2};
 	
 	local shallowWater = GameDefines.SHALLOW_WATER_TERRAIN;
@@ -788,6 +786,7 @@ function StartPlotSystem()
 end
 
 function GenerateMap()
+    nextRiverID, _rivers = 0, {};
     _plots = {}; -- Engine plot objects may change when generating another map.
 	print("Generating Map");
 	-- This is the core map generation function.
