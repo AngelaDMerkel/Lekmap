@@ -21,6 +21,7 @@ include("Lekmap_Luxuries");
 include("Lekmap_Strategics");
 include("Lekmap_Bonus");  -- regional start bonuses (majors + city-states)
 include("Lekmap_Spawns");
+include("Lekmap_Competition");
 include("Lekmap_NaturalWonders");
 include("Lekmap_CityStates");
 include("Lekmap_Validation");
@@ -785,7 +786,7 @@ function StartPlotSystem()
 	print("Lekmap: Default StartPlotSystem -- override in your map script.");
 end
 
-function GenerateMap()
+local function GenerateNormalMap()
     nextRiverID, _rivers = 0, {};
     _plots = {}; -- Engine plot objects may change when generating another map.
 	print("Generating Map");
@@ -830,4 +831,14 @@ function GenerateMap()
 
 	-- Continental artwork selection must wait until Areas are finalized, so it gets handled last.
 	DetermineContinents();
+end
+-- A map script runs inside a game launch, including multiplayer. Recover from
+-- unexpected script errors instead of leaving a partially generated world.
+function GenerateMap()
+    local success, message = pcall(GenerateNormalMap)
+    if not success then
+        print("Lekmap native recovery: " .. tostring(message))
+        Lekmap_Utilities.RecoverGeneration()
+        if Map.DefaultContinentStamper then Map.DefaultContinentStamper() end
+    end
 end

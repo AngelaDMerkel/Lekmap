@@ -23,6 +23,83 @@
 
 Lekmap_Strategics = {}
 
+-- Distribution is independent of the existing deposit-size/density controls.
+-- 1: original balanced access; 2: iron/horse openings, contested late resources;
+-- 3: all strategics contested. No fallback may bypass the selected policy.
+local distribution_mode = 1
+local opposing_team_count = 0
+local frontier_scores = {}
+
+function Lekmap_Strategics.Configure(args)
+    distribution_mode = args.strategicDistribution or 1
+    assert(distribution_mode>=1 and distribution_mode<=3, "Invalid strategic distribution")
+    frontier_scores = {}
+    if distribution_mode>1 then
+        Lekmap_Competition.Refresh()
+        local teams={}
+        for region in Lekmap_Utilities.OrderedPairs(Lekmap_Spawns.GetAllStartPlots()) do
+            local player=Lekmap_Spawns.GetPlayerForRegion(region)
+            teams[player and Players[player]:GetTeam() or region]=true
+        end
+        local count=0; for _ in pairs(teams) do count=count+1 end
+        opposing_team_count=count
+        -- Cooperative/one-team games still keep contested resources outside
+        -- the opening. There is no opposing-team race to measure in that case.
+    end
+end
+
+function Lekmap_Strategics.IsContestedResource(key)
+    return distribution_mode==3 or (distribution_mode==2 and key~="IRON" and key~="HORSE")
+end
+
+function Lekmap_Strategics.FrontierScore(x,y)
+    local width=Map.GetGridSize()
+    local index=y*width+x+1
+    if frontier_scores[index]~=nil then
+        return frontier_scores[index]~=false and frontier_scores[index] or nil
+    end
+    local plot=Map.GetPlot(x,y)
+    local teams={}
+    for region,start in Lekmap_Utilities.OrderedPairs(Lekmap_Spawns.GetAllStartPlots()) do
+        if Map.PlotDistance(x,y,start.x,start.y)<=3 then frontier_scores[index]=false; return nil end
+        local distance=Lekmap_Competition.Distances(start.x,start.y,false)[index]
+        if not distance then distance=Lekmap_Competition.Distances(start.x,start.y,true)[index] end
+        local player=Lekmap_Spawns.GetPlayerForRegion(region)
+        local team=player and Players[player]:GetTeam() or region
+        if distance and (not teams[team] or distance<teams[team]) then teams[team]=distance end
+    end
+    local distances={}; for _,d in pairs(teams) do distances[#distances+1]=d end
+    table.sort(distances)
+    local score
+    if #distances>=2 and distances[2]-distances[1]<=4 and distances[2]<=distances[1]*1.5 then
+        score=(distances[2]-distances[1])*4+(distances[1]+distances[2])*0.1
+    elseif opposing_team_count==1 and #distances==1 and distances[1]>=6 then
+        score=-distances[1]*0.1
+    end
+    frontier_scores[index]=score or false
+    return score
+end
+
+function Lekmap_Strategics.CanPlaceResource(key,x,y)
+    if distribution_mode==1 or not Lekmap_Strategics.IsContestedResource(key) then return true end
+    return Lekmap_Strategics.FrontierScore(x,y)~=nil
+end
+
+function Lekmap_Strategics.OrderCandidates(list)
+    if distribution_mode==1 then return list end
+    local width=Map.GetGridSize()
+    local scores,order={},{}
+    for i,index in ipairs(list) do
+        scores[index]=Lekmap_Strategics.FrontierScore((index-1)%width,math.floor((index-1)/width)) or math.huge
+        order[index]=i
+    end
+    table.sort(list,function(a,b)
+        if scores[a]==scores[b] then return order[a]<order[b] end
+        return scores[a]<scores[b]
+    end)
+    return list
+end
+
 ------------------------------------------------------------------------------
 -- QUANTITY TABLES
 -- Indexed by resource key, returns quantity per tile for the given density.
@@ -109,7 +186,7 @@ local function BuildFilteredList(plot_cache, map_width, filter_fn)
         local j = Map.Rand(i, "Shuffle filtered list") + 1
         list[i], list[j] = list[j], list[i]
     end
-    return list
+    return Lekmap_Strategics.OrderCandidates(list)
 end
 
 local function IsMarsh(entry)
@@ -422,7 +499,8 @@ local STRAT_BALANCE_RULES = {
 
 -- Preserve the six existing menu choices. The capital luxury/bonus budgets are
 -- controlled separately; this setting selects which strategic types are supplied.
-function Lekmap_Strategics.GetStartRules(start_quality)
+function Lekmap_Strategics.GetStartRules(start_quality, distribution)
+    if distribution==3 then return {} end
     local quality = start_quality or 2
     local rules = {}
     for _, rule in ipairs(STRAT_BALANCE_RULES) do
@@ -430,6 +508,7 @@ function Lekmap_Strategics.GetStartRules(start_quality)
         if rule.key == "COAL" then enabled = quality == 1 or quality == 2 or quality == 4 or quality == 6 end
         if rule.key == "ALUMINUM" then enabled = quality == 1 or quality == 2 or quality == 5 or quality == 6 end
         if rule.key == "URANIUM" then enabled = quality == 2 end
+        if distribution==2 then enabled=rule.key=="IRON" or rule.key=="HORSE" end
         if enabled then table.insert(rules, rule) end
     end
     return rules
@@ -446,7 +525,7 @@ function Lekmap_Strategics.PlaceAtStarts(args)
 
     for region_index, start_plot in Lekmap_Utilities.OrderedPairs(start_plots) do
         if start_plot and start_plot.x and start_plot.y then
-            for _, rule in ipairs(Lekmap_Strategics.GetStartRules(args.startQuality)) do
+            for _, rule in ipairs(Lekmap_Strategics.GetStartRules(args.startQuality, distribution_mode)) do
                 local resource_id = Lekmap_ResourceDefs.GetID(rule.key)
                 if resource_id then
                     local qty = quantities[rule.key] or 2
@@ -489,55 +568,25 @@ end
 ------------------------------------------------------------------------------
 
 function Lekmap_Strategics.EnforceMinimums(num_civs, resource_setting)
-    local IMPACT_LAYER = Lekmap_Constants.IMPACT_LAYER
-    local bracket = GetBracket(resource_setting)
-    local quantities = MAJOR_QUANTITIES[bracket]
-    local plot_cache = Lekmap_Resources.GetPlotCache()
-    local map_width, _ = Lekmap_Resources.GetMapDimensions()
-
-    for _, req in ipairs(MINIMUM_REQUIREMENTS) do
-        local key         = req[1]
-        local abs_min     = req[2]
-        local per_civ     = req[3]
-        local resource_id = Lekmap_ResourceDefs.GetID(key)
-        if resource_id then
-            local required = math.max(abs_min, per_civ * num_civs)
-            local placed   = Lekmap_Resources.GetAmountPlaced(resource_id)
-            local qty      = quantities[key] or 2
-
-            -- For uranium, use a while loop (can need many passes).
-            if key == "URANIUM" then
-                local max_attempts = 50
-                local attempts = 0
-                while Lekmap_Resources.GetAmountPlaced(resource_id) < required and attempts < max_attempts do
-                    attempts = attempts + 1
-                    local land_list = BuildFilteredList(plot_cache, map_width, IsLand)
-                    local entries = { { resource_id, qty, 100, 0, 0 } }
-                    Lekmap_Resources.ProcessWeightedList(99999, IMPACT_LAYER.STRATEGIC, land_list, entries)
+    local quantities = MAJOR_QUANTITIES[GetBracket(resource_setting)]
+    for _, requirement in ipairs(MINIMUM_REQUIREMENTS) do
+        local key = requirement[1]
+        local id = Lekmap_ResourceDefs.GetID(key)
+        if id then
+            local required = math.max(requirement[2], requirement[3] * num_civs)
+            if Lekmap_Resources.GetAmountPlaced(id) < required then
+                local candidates = Lekmap_Strategics.OrderCandidates(Lekmap_Resources.GeneratePlotList(key, "world"))
+                local cache = Lekmap_Resources.GetPlotCache()
+                for _, index in ipairs(candidates) do
+                    if Lekmap_Resources.GetAmountPlaced(id) >= required then break end
+                    local entry = cache[index]
+                    -- The shared writer still checks contested access and live legality.
+                    Lekmap_Resources.PlaceOne(entry.x, entry.y, key, quantities[key] or 2)
                 end
-            else
-                if placed < required then
-                    -- Try specific terrain first for iron/coal on hills.
-                    if (key == "IRON" or key == "COAL") and placed < abs_min then
-                        local hill_list = BuildFilteredList(plot_cache, map_width, IsHills)
-                        local entries = { { resource_id, qty, 100, 0, 0 } }
-                        Lekmap_Resources.ProcessWeightedList(99999, IMPACT_LAYER.STRATEGIC, hill_list, entries)
-                    end
-                    -- Then try any land.
-                    if Lekmap_Resources.GetAmountPlaced(resource_id) < required then
-                        local filter_fn = IsLand
-                        if key == "HORSE" then filter_fn = IsPlainsFlat end
-                        local land_list = BuildFilteredList(plot_cache, map_width, filter_fn)
-                        local entries = { { resource_id, qty, 100, 0, 0 } }
-                        Lekmap_Resources.ProcessWeightedList(99999, IMPACT_LAYER.STRATEGIC, land_list, entries)
-                    end
-                    -- If horse still low, try grass.
-                    if key == "HORSE" and Lekmap_Resources.GetAmountPlaced(resource_id) < required then
-                        local grass_list = BuildFilteredList(plot_cache, map_width, IsDryGrassFlat)
-                        local entries = { { resource_id, qty, 100, 0, 0 } }
-                        Lekmap_Resources.ProcessWeightedList(99999, IMPACT_LAYER.STRATEGIC, grass_list, entries)
-                    end
-                end
+            end
+            if Lekmap_Resources.GetAmountPlaced(id) < required then
+                print(string.format("Lekmap strategic shortfall: %s %d/%d units under distribution mode %d",
+                    key, Lekmap_Resources.GetAmountPlaced(id), required, distribution_mode))
             end
         end
     end
@@ -549,6 +598,7 @@ end
 
 function Lekmap_Strategics.PlaceAll(args)
     args = args or {}
+    Lekmap_Strategics.Configure(args)
     local resource_setting = Lekmap_Resources.GetResourceSetting()
     local num_civs = Lekmap_Regions.GetRegionCount()
 
@@ -574,3 +624,5 @@ function Lekmap_Strategics.PlaceAll(args)
 
     print("Lekmap_Strategics: Strategic placement complete.")
 end
+
+function Lekmap_Strategics.GetDistributionMode() return distribution_mode end

@@ -169,6 +169,8 @@ function Lekmap_CityStates.CanPlaceAt(x, y, area_id, force_placement, ignore_col
         return false
     end
 
+    if Lekmap_Competition and Lekmap_Competition.BlocksCityState(x,y) then return false end
+
     -- Hard exclusions also apply when a soft regional preference is relaxed.
     if plot:IsNaturalWonder() or Lekmap_Resources.IsCollision(x, y) then return false end
     for _, start in Lekmap_Utilities.OrderedPairs(Lekmap_Spawns.GetAllStartPlots()) do
@@ -982,7 +984,25 @@ function Lekmap_CityStates.PlaceAll(args)
         end
 
         if num_discarded > 0 then
-            error("Lekmap: unable to place " .. num_discarded .. " city-states legally. Increase map size or reduce city-state count.")
+            print("Lekmap recovery: completing "..num_discarded.." city-state starts outside the preferred reservations.")
+            local occupied={}
+            for _,start in Lekmap_Utilities.OrderedPairs(Lekmap_Spawns.GetAllStartPlots()) do occupied[#occupied+1]=start end
+            for _,start in Lekmap_Utilities.OrderedPairs(city_state_plots) do occupied[#occupied+1]=start end
+            for cs=1,num_city_states do
+                if not validity_table[cs] then
+                    local x,y
+                    for distance=5,1,-1 do
+                        x,y=Lekmap_Utilities.FindFallbackStart(occupied,distance,false)
+                        if x then break end
+                    end
+                    if not x then x,y=Lekmap_Utilities.FindFallbackStart(occupied,1,true) end
+                    if x then
+                        Lekmap_CityStates.RecordPlacement(cs,x,y,-1)
+                        occupied[#occupied+1]={x=x,y=y}
+                        num_discarded=num_discarded-1
+                    end
+                end
+            end
         end
     end
 

@@ -765,7 +765,21 @@ function Lekmap_Spawns.FindStartInRegion(region_index, constraints, thresholds)
     elseif (constraints.minimum_distance or 8) > 5 then
         relaxed.minimum_distance = 5
     else
-        return nil, nil, 0, false, false
+        local occupied={}
+        for _,start in Lekmap_Utilities.OrderedPairs(start_plots) do occupied[#occupied+1]=start end
+        for distance=5,1,-1 do
+            local x,y=Lekmap_Utilities.FindFallbackStart(occupied,distance,false)
+            if x then
+                print("Lekmap recovery: region "..region_index.." uses a global start search, spacing "..distance)
+                return x,y,0,true,true
+            end
+        end
+        local x,y=Lekmap_Utilities.FindFallbackStart(occupied,1,true)
+        if x then
+            print("Lekmap recovery: made an emergency starting tile for region "..region_index)
+            return x,y,0,true,true
+        end
+        return nil,nil,0,false,false
     end
     print("Lekmap_Spawns: relaxing start preference in region " .. region_index)
     local x, y, score, success = Lekmap_Spawns.FindStartInRegion(region_index, relaxed, thresholds)
@@ -1122,6 +1136,8 @@ function Lekmap_Spawns.ChooseLocations(args)
     settings.center_bias      = args.centerBias    or DEFAULT_CENTER_BIAS
     settings.middle_bias      = args.middleBias    or DEFAULT_MIDDLE_BIAS
     settings.start_distance   = args.startDistance  or 2
+    settings.no_coast_inland  = args.NoCoastInland == true
+    settings.competitive = args.competitive == true
     if args.CoastLuxMode ~= nil then
         settings.coast_lux_mode = args.CoastLuxMode
     elseif args.CoastLux ~= nil then
@@ -1203,6 +1219,16 @@ function Lekmap_Spawns.ChooseLocations(args)
             else
                 error("Lekmap: no legal start in region " .. region_index .. ". Increase map size or reduce the player count.")
             end
+        end
+    end
+
+    if settings.competitive then
+        Lekmap_Competition.RefineStarts(start_plots, assignments, biases, settings)
+        -- Relocation is complete before any cities, wonders or resources exist.
+        Lekmap_Impact.Initialize()
+        for region, start in Lekmap_Utilities.OrderedPairs(start_plots) do
+            RecordStartConditions(region, start.x, start.y)
+            PlaceSpawnImpact(start.x, start.y, settings.collide_coastals)
         end
     end
 

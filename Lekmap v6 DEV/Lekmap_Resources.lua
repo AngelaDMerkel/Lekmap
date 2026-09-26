@@ -639,6 +639,8 @@ end
 function Lekmap_Resources.CanPlaceAt(resource_key, x, y)
     local active = Lekmap_ResourceDefs.active and Lekmap_ResourceDefs.active[resource_key]
     if not active or not Map.GetPlot(x, y) then return false end
+    if active.def.class == "strategic" and Lekmap_Strategics
+        and not Lekmap_Strategics.CanPlaceResource(resource_key,x,y) then return false end
     Lekmap_Resources.RefreshPlotCacheAt(x, y)
     local entry = plot_cache[y * map_width + x + 1]
     if not Lekmap_Resources.IsValidPlotForResource(entry, active.def) then return false end

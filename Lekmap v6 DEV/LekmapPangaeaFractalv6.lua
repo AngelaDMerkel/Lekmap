@@ -22,7 +22,7 @@ include("MultilayeredFractal");
 function GetMapScriptInfo()
 	local world_age, temperature, rainfall, sea_level, resources = GetCoreMapOptions()
 	return {
-		Name = "Lekmap: Pangaea - Fractal (v6)",
+		Name = "Lekmap: Pangaea - Fractal (v6.1)",
 		Description = "A map script made for Lekmod based on HB's Mapscript v8.1. Pangaea - Fractal",
 		IsAdvancedMap = false,
 		IconIndex = 0,
@@ -498,6 +498,19 @@ function GetMapScriptInfo()
 				DefaultValue = 1,
 				SortPriority = -71,
 			},
+            -- Append controls so the original option indices remain stable.
+            {
+                Name = "[Resources] Strategic Distribution",
+                Values = { "Balanced Access", "Balanced Openings + Contested Expansion", "Contested Strategics" },
+                DefaultValue = 2,
+                SortPriority = -75,
+            },
+            {
+                Name = "[Spawns] Competitive Balance",
+                Values = { "Competitive", "Standard Lekmap" },
+                DefaultValue = 1,
+                SortPriority = -81,
+            },
 		},
 	}
 end
@@ -569,6 +582,16 @@ function PangaeaFractalWorld:GeneratePlotTypes(args)
 	local allcomplete = false;
     local attempts = 0;
     local max_attempts = args.max_attempts or 128;
+    local best_candidate, best_land = nil, 0;
+    local function retain_candidate(land_count, only_area)
+        if land_count > best_land then
+            best_land, best_candidate = land_count, {};
+            for i=1,self.num_plots_x*self.num_plots_y do
+                local on_mainland = not only_area or Map.GetPlotByIndex(i-1):GetArea()==only_area;
+                best_candidate[i] = on_mainland and self.plot_types[i] or PlotTypes.PLOT_OCEAN;
+            end
+        end
+    end
     -- Resolve random climate/age once, not again whenever a candidate fails.
     local sea_level = Map.GetCustomOption(4);
     if sea_level == 4 then sea_level = 1 + Map.Rand(3, "Random Sea Level - Lua"); end
@@ -681,8 +704,13 @@ function PangaeaFractalWorld:GeneratePlotTypes(args)
 			while done == false do
                 attempts = attempts + 1;
                 if attempts > max_attempts then
-                    error("Lekmap: no suitable connected Pangaea after " .. max_attempts ..
-                        " candidates. Try a larger map, lower sea level or fewer/shorter fjords.");
+                    print("Lekmap recovery: using the best connected candidate after " .. max_attempts .. " attempts.");
+                    if best_candidate and best_land >= self.num_plots_x*self.num_plots_y*0.30 then
+                        self.plot_types = best_candidate;
+                    else
+                        self.plot_types = Lekmap_Utilities.EmergencyPlotTypes();
+                    end
+                    return self.plot_types;
                 end
                 self.plot_types = table.fill(PlotTypes.PLOT_OCEAN, self.num_plots_x * self.num_plots_y);
 				local grain_dice = Map.Rand(7, "Continental Grain roll - LUA Pangaea");
@@ -722,6 +750,7 @@ function PangaeaFractalWorld:GeneratePlotTypes(args)
 		
 				biggest_area = Map.FindBiggestArea(false);
 				iNumBiggestAreaTiles = biggest_area and biggest_area:GetNumTiles() or 0;
+                if biggest_area then retain_candidate(iNumBiggestAreaTiles, biggest_area:GetID()); end
 				-- Now test the biggest landmass to see if it is large enough.
 				if iNumTotalLandTiles > 0 and iNumBiggestAreaTiles >= iNumTotalLandTiles then
 					done = true;
@@ -1951,6 +1980,9 @@ end
 ------------------------------------------------------------------------------
 function StartPlotSystem()
     Lekmap_Resources.Reset();
+    local competitive = (Map.GetCustomOption(26) or 1) == 1;
+    local distribution = Map.GetCustomOption(25) or 2;
+    Lekmap_Competition.Begin(competitive);
 	------------------------------------------------------------------------------
 	-- Read player settings from Custom Options.
 	------------------------------------------------------------------------------
@@ -1959,7 +1991,7 @@ function StartPlotSystem()
 	local balanced_regionals   = (balancedRegionalsOpt == 1);
 	local startQuality    = Map.GetCustomOption(5);
 	if startQuality == 7 then
-		startQuality = 1 + Map.Rand(6, "Random strategic access - Lekmap");
+        startQuality = distribution == 1 and (1 + Map.Rand(6, "Random strategic access - Lekmap")) or 2;
 	end
 	local allowInlandSea  = Map.GetCustomOption(18);
 	local coastalSetting  = Map.GetCustomOption(16);
@@ -2018,6 +2050,7 @@ function StartPlotSystem()
 		startDistance     = startDistance,
 		AllowInlandSea   = (allowInlandSea == 1),
 		collideCoastals  = true,
+        competitive     = competitive,
 	});
 
 	------------------------------------------------------------------------------
@@ -2081,9 +2114,12 @@ function StartPlotSystem()
 		startingLuxuries            = starting_luxuries,
 		additionalStartLuxuries     = additional_start_luxuries,
 		guaranteedStrategics        = guaranteed_strategics,
+        strategicDistribution      = distribution,
 	});
 
-    Lekmap_Validation.AssertValid({ strategicBalance = guaranteed_strategics, startQuality = startQuality });
+    Lekmap_Competition.Finish(Lekmap_Spawns.GetAllStartPlots());
+    Lekmap_Validation.Finalize({ strategicBalance = guaranteed_strategics, startQuality = startQuality,
+        strategicDistribution = distribution, competitive = competitive });
 	print("Lekmap: StartPlotSystem complete.");
 end
 ------------------------------------------------------------------------------
