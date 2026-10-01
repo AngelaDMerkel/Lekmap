@@ -12,6 +12,9 @@
 include("Lekmap_Constants");
 include("Lekmap_HexUtil");
 include("Lekmap_Utilities");
+include("Lekmap_StartRules");
+include("Lekmap_Travel");
+include("Lekmap_Opening");
 include("NaturalWondersCustomMethods");
 include("Lekmap_Impact");
 include("Lekmap_ResourceDefs");
