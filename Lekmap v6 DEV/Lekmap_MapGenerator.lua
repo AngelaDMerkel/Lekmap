@@ -838,6 +838,7 @@ end
 -- A map script runs inside a game launch, including multiplayer. Recover from
 -- unexpected script errors instead of leaving a partially generated world.
 function GenerateMap()
+    Lekmap_Utilities.ResetRecoveryStats()
     local success, message = pcall(GenerateNormalMap)
     if not success then
         print("Lekmap native recovery: " .. tostring(message))

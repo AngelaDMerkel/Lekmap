@@ -786,3 +786,89 @@ function Lekmap_ResourceDefs.ResolveWeightTable(weight_table)
     end
     return resolved
 end
+
+------------------------------------------------------------------------------
+-- Pure terrain checks shared by normal placement and independent recovery.
+-- No initialization, mutable placement caches, impact layers or random draws.
+-- Recovery passes false: an existing feature must already satisfy the rules.
+------------------------------------------------------------------------------
+function Lekmap_ResourceDefs.MatchesPlot(entry, def, allow_forced_feature)
+    local TERRAIN_LOOKUP,FEATURE_LOOKUP=GameInfoTypes,GameInfoTypes
+    -- Must not already have a resource.
+    if not entry or not def or entry.has_resource or entry.is_wonder then return false end
+
+    -- Must not be mountain.
+    if entry.is_mountain then return false end
+
+    -- Shallow coast water (before hill/flat). Same idea as land + empty def.features: only
+    -- NO_FEATURE tiles qualify — atolls, ice, etc. are features and are not listed on FISH etc.
+    if entry.is_water then
+        if entry.is_lake then return false end
+        if not entry.is_coast then return false end
+        if entry.feature_type ~= FeatureTypes.NO_FEATURE then return false end
+        for _, t in ipairs(def.terrains) do
+            if TERRAIN_LOOKUP[t] == TerrainTypes.TERRAIN_COAST then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- Land: hills/flatlands eligibility.
+    if entry.is_hill and not def.hills then return false end
+    if entry.is_flat and not def.flatlands then return false end
+
+    -- Land plot with a feature.
+    if entry.feature_type ~= FeatureTypes.NO_FEATURE then
+        -- Check if feature is in the allowed features list.
+        local feature_allowed = false
+        for _, f in ipairs(def.features) do
+            if FEATURE_LOOKUP[f] == entry.feature_type then
+                feature_allowed = true
+                break
+            end
+        end
+        if not feature_allowed then return false end
+
+        -- If feature_terrains is specified, the terrain under the feature must match.
+        if def.feature_terrains then
+            local terrain_under_ok = false
+            for _, t in ipairs(def.feature_terrains) do
+                if TERRAIN_LOOKUP[t] == entry.terrain_type then
+                    terrain_under_ok = true
+                    break
+                end
+            end
+            if not terrain_under_ok then return false end
+        end
+        return true
+    end
+
+    -- Land plot with no feature: terrain must be in the terrains list.
+    for _, t in ipairs(def.terrains) do
+        if TERRAIN_LOOKUP[t] == entry.terrain_type then
+            return true
+        end
+    end
+
+    -- force_valid_feature: accept bare terrain if it matches feature_terrains
+    -- and the resource has a feature that can be forced after placement.
+    if allow_forced_feature ~= false and def.force_valid_feature and def.feature_terrains then
+        for _, t in ipairs(def.feature_terrains) do
+            if TERRAIN_LOOKUP[t] == entry.terrain_type then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+function Lekmap_ResourceDefs.DescribePlot(plot)
+    return {x=plot:GetX(),y=plot:GetY(),plot_type=plot:GetPlotType(),
+        terrain_type=plot:GetTerrainType(),feature_type=plot:GetFeatureType(),
+        has_resource=plot:GetResourceType(-1)~=-1,is_wonder=plot:IsNaturalWonder(),
+        is_mountain=plot:IsMountain(),is_water=plot:IsWater(),is_hill=plot:IsHills(),
+        is_flat=plot:IsFlatlands(),is_coast=plot:GetTerrainType()==TerrainTypes.TERRAIN_COAST,
+        is_lake=plot:IsLake()}
+end

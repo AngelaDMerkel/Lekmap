@@ -18,6 +18,11 @@
 
 Lekmap_Utilities = {}
 
+local function HabitableStart(plot)
+    return plot and not plot:IsWater() and not plot:IsMountain() and not plot:IsNaturalWonder()
+        and not plot:IsImpassable() and plot:GetFeatureType()~=FeatureTypes.FEATURE_OASIS
+end
+
 -- Native generation must return a playable map. Prefer existing mainland land,
 -- then other land; only an exhausted layout permits a small terrain repair.
 function Lekmap_Utilities.FindFallbackStart(occupied, minimum_distance, repair_terrain)
@@ -28,8 +33,7 @@ function Lekmap_Utilities.FindFallbackStart(occupied, minimum_distance, repair_t
     for y=0,height-1 do for x=0,width-1 do
         local plot=Map.GetPlot(x,y)
         local usable=not plot:IsNaturalWonder() and (repair_terrain or
-            (not plot:IsWater() and not plot:IsMountain() and plot:GetResourceType(-1)==-1
-                and plot:GetFeatureType()~=FeatureTypes.FEATURE_OASIS))
+            (HabitableStart(plot) and plot:GetResourceType(-1)==-1))
         if usable then
             local closest=width+height
             for _,start in ipairs(occupied) do closest=math.min(closest,Map.PlotDistance(x,y,start.x,start.y)) end
@@ -57,7 +61,7 @@ function Lekmap_Utilities.EnsureNativeStarts()
         local player=Players[id]
         if player and player:IsEverAlive() then
             local plot=player:GetStartingPlot()
-            local valid=plot and not plot:IsWater() and not plot:IsMountain() and not plot:IsNaturalWonder()
+            local valid=HabitableStart(plot)
             if valid then
                 for _,other in ipairs(occupied) do
                     if other.x==plot:GetX() and other.y==plot:GetY() then valid=false;break end
@@ -100,53 +104,130 @@ function Lekmap_Utilities.EmergencyPlotTypes()
 end
 
 local recovering_generation=false
+local recovery_stats={calls=0,placement_retries=0,independent_completions=0}
+function Lekmap_Utilities.ResetRecoveryStats()
+    recovery_stats={calls=0,placement_retries=0,independent_completions=0}
+end
+function Lekmap_Utilities.GetRecoveryStats()
+    local result={};for key,value in pairs(recovery_stats) do result[key]=value end;return result
+end
+
+local function ClearRecoveryPlot(plot)
+    plot:SetResourceType(-1,0)
+    plot:SetFeatureType(FeatureTypes.NO_FEATURE,-1)
+    if plot.SetWOfRiver then plot:SetWOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION) end
+    if plot.SetNWOfRiver then plot:SetNWOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION) end
+    if plot.SetNEOfRiver then plot:SetNEOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION) end
+    if plot.SetImprovementType then plot:SetImprovementType(-1) end
+    if plot.SetRouteType then plot:SetRouteType(-1) end
+end
+local function RecoveryRivers(width,height)
+    local spacing=({9,7,5})[Map.GetCustomOption(9)] or 7
+    for index=0,width*height-1 do
+        local plot=Map.GetPlotByIndex(index)
+        local east=Map.PlotDirection(plot:GetX(),plot:GetY(),DirectionTypes.DIRECTION_EAST)
+        if plot.SetWOfRiver and plot:GetX()%spacing==0 and not plot:IsWater() and east and not east:IsWater() then
+            plot:SetWOfRiver(true,FlowDirectionTypes.FLOWDIRECTION_NORTH)
+        end
+    end
+end
+local function RecoveryStateValid()
+    local occupied={}
+    for id=0,GameDefines.MAX_CIV_PLAYERS-1 do
+        local player=Players[id]
+        if player and player:IsEverAlive() then
+            local plot=player:GetStartingPlot()
+            if not HabitableStart(plot) then return false end
+            local index=plot:GetPlotIndex()
+            if occupied[index] or plot:GetResourceType(-1)~=-1 then return false end
+            occupied[index]=true
+        end
+    end
+    for index=0,Map.GetNumPlots()-1 do
+        local plot=Map.GetPlotByIndex(index)
+        local id=plot:GetResourceType(-1)
+        if id~=-1 then
+            local row=GameInfo.Resources[id]
+            local def=row and Lekmap_ResourceDefs.RESOURCE_DEFS[row.Type:gsub("^RESOURCE_","")]
+            local entry=Lekmap_ResourceDefs.DescribePlot(plot);entry.has_resource=false
+            if not def or not Lekmap_ResourceDefs.MatchesPlot(entry,def,false) then return false end
+        end
+    end
+    return true
+end
+
 function Lekmap_Utilities.RecoverGeneration()
-    local retry_placement=not recovering_generation
+    local was_recovering=recovering_generation
     recovering_generation=true
+    recovery_stats.calls=recovery_stats.calls+1
     print("Lekmap recovery: generating a simple connected fallback map.")
     local width,height=Map.GetGridSize()
     local types=Lekmap_Utilities.EmergencyPlotTypes()
     for index=0,width*height-1 do
         local plot=Map.GetPlotByIndex(index)
-        plot:SetResourceType(-1,0)
-        plot:SetFeatureType(FeatureTypes.NO_FEATURE,-1)
-        if plot.SetWOfRiver then plot:SetWOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION) end
-        if plot.SetNWOfRiver then plot:SetNWOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION) end
-        if plot.SetNEOfRiver then plot:SetNEOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION) end
-        if plot.SetImprovementType then plot:SetImprovementType(-1) end
-        if plot.SetRouteType then plot:SetRouteType(-1) end
+        ClearRecoveryPlot(plot)
         plot:SetPlotType(types[index+1],false,false)
         plot:SetTerrainType(plot:IsWater() and TerrainTypes.TERRAIN_COAST or TerrainTypes.TERRAIN_GRASS,false,false)
     end
     Map.RecalculateAreas()
-    -- Re-run the normal climate and placement modules on safe geometry. Their
-    -- selected options remain authoritative; no lobby interaction is needed.
-    if GenerateTerrain then pcall(GenerateTerrain) end
-    if AddFeatures then pcall(AddFeatures) end
-    local river_spacing=({9,7,5})[Map.GetCustomOption(9)] or 7
-    for index=0,width*height-1 do
-        local plot=Map.GetPlotByIndex(index)
-        local east=Map.PlotDirection(plot:GetX(),plot:GetY(),DirectionTypes.DIRECTION_EAST)
-        if plot.SetWOfRiver and plot:GetX()%river_spacing==0 and not plot:IsWater() and east and not east:IsWater() then
-            plot:SetWOfRiver(true,FlowDirectionTypes.FLOWDIRECTION_NORTH)
+    -- A failed callback may already have changed half the map. Discard its
+    -- incomplete layer before proceeding to the next recovery stage.
+    if GenerateTerrain and not pcall(GenerateTerrain) then
+        for index=0,width*height-1 do
+            local plot=Map.GetPlotByIndex(index)
+            ClearRecoveryPlot(plot)
+            plot:SetPlotType(types[index+1],false,false)
+            plot:SetTerrainType(plot:IsWater() and TerrainTypes.TERRAIN_COAST or TerrainTypes.TERRAIN_GRASS,false,false)
         end
     end
-    Map.RecalculateAreas()
-    if retry_placement and StartPlotSystem then
-        local placed=pcall(StartPlotSystem)
-        if placed then recovering_generation=false;return end
+    local before_features={}
+    for index=0,width*height-1 do
+        local plot=Map.GetPlotByIndex(index)
+        before_features[index+1]={plot:GetPlotType(),plot:GetTerrainType()}
     end
+    if AddFeatures and not pcall(AddFeatures) then
+        for index=0,width*height-1 do
+            local plot=Map.GetPlotByIndex(index)
+            local saved=before_features[index+1]
+            ClearRecoveryPlot(plot)
+            plot:SetPlotType(saved[1],false,false)
+            plot:SetTerrainType(saved[2],false,false)
+        end
+    end
+    before_features=nil
+    RecoveryRivers(width,height)
+    Map.RecalculateAreas()
+    -- Keep the successful climate/feature layers, but roll back all partial
+    -- start, wonder and resource placement if the normal retry fails.
+    local baseline={}
+    for index=0,width*height-1 do
+        local plot=Map.GetPlotByIndex(index)
+        baseline[index+1]={plot:GetPlotType(),plot:GetTerrainType(),plot:GetFeatureType()}
+    end
+    if not was_recovering and StartPlotSystem then
+        recovery_stats.placement_retries=recovery_stats.placement_retries+1
+        local placed=pcall(StartPlotSystem)
+        if placed and RecoveryStateValid() then recovering_generation=was_recovering;return end
+    end
+    recovery_stats.independent_completions=recovery_stats.independent_completions+1
+    for index=0,width*height-1 do
+        local plot=Map.GetPlotByIndex(index)
+        local saved=baseline[index+1]
+        ClearRecoveryPlot(plot)
+        plot:SetPlotType(saved[1],false,false)
+        plot:SetTerrainType(saved[2],false,false)
+        plot:SetFeatureType(saved[3],-1)
+    end
+    RecoveryRivers(width,height)
+    Map.RecalculateAreas()
     local starts=Lekmap_Utilities.EnsureNativeStarts()
     local occupied={}
     for _,start in ipairs(starts) do occupied[start.y*width+start.x+1]=true end
-    -- Mod-independent base resources. No scripted placement module is needed
-    -- on this path, so an error there cannot prevent recovery.
     local distribution=Map.GetCustomOption(25) or 2
-    local strategic_types={RESOURCE_IRON=true,RESOURCE_HORSE=true,RESOURCE_COAL=true,
-        RESOURCE_OIL=true,RESOURCE_ALUMINUM=true,RESOURCE_URANIUM=true}
-    local function permitted(name,plot)
-        if not strategic_types[name] or distribution==1 then return true end
-        if distribution==2 and (name=="RESOURCE_IRON" or name=="RESOURCE_HORSE") then return true end
+    local function permitted(key,plot)
+        local def=Lekmap_ResourceDefs.RESOURCE_DEFS[key]
+        if def.class~="strategic" or distribution==1 then return true end
+        if distribution==2 and (key=="IRON" or key=="HORSE") then return true end
         local distances={}
         for _,start in ipairs(starts) do if not start.minor then
             local distance=Map.PlotDistance(plot:GetX(),plot:GetY(),start.x,start.y)
@@ -158,8 +239,10 @@ function Lekmap_Utilities.RecoverGeneration()
         if #ordered==1 then return ordered[1]>=6 end
         return #ordered>=2 and ordered[2]-ordered[1]<=4 and ordered[2]<=ordered[1]*1.5
     end
-    local land_resources={"RESOURCE_COW","RESOURCE_STONE","RESOURCE_HORSE","RESOURCE_IRON",
-        "RESOURCE_GOLD","RESOURCE_COAL","RESOURCE_ALUMINUM","RESOURCE_URANIUM"}
+    -- Bounded choices on the existing terrain. This path depends only on
+    -- definitions and live plots; broken placement caches/writers are unused.
+    local land_keys={"COW","WHEAT","SHEEP","DEER","BANANA","STONE","HORSE","IRON","GOLD","COAL","ALUMINUM","URANIUM","OIL"}
+    local water_keys={"FISH","OIL"}
     for index=0,width*height-1 do
         local plot=Map.GetPlotByIndex(index)
         if not occupied[index+1] then
@@ -167,29 +250,27 @@ function Lekmap_Utilities.RecoverGeneration()
             for _,start in ipairs(starts) do
                 if Map.PlotDistance(plot:GetX(),plot:GetY(),start.x,start.y)<=3 then near_start=true;break end
             end
-            local resource,name
-            if plot:IsWater() then
-                if plot:IsAdjacentToLand() and index%5==0 then
-                    name=index%10==0 and "RESOURCE_OIL" or "RESOURCE_FISH"
-                    resource=GameInfoTypes[name]
+            local attempt=plot:IsWater() and plot:IsAdjacentToLand() and index%5==0
+                or not plot:IsWater() and (near_start or index%5==0)
+            if attempt then
+                local entry=Lekmap_ResourceDefs.DescribePlot(plot)
+                local keys=plot:IsWater() and water_keys or land_keys
+                local offset=(index+math.floor(index/width))%#keys
+                for step=1,#keys do
+                    local key=keys[(offset+step-1)%#keys+1]
+                    local row=GameInfo.Resources["RESOURCE_"..key]
+                    local id=row and row.ID
+                    local def=Lekmap_ResourceDefs.RESOURCE_DEFS[key]
+                    if id and Lekmap_ResourceDefs.MatchesPlot(entry,def,false) and permitted(key,plot) then
+                        plot:SetResourceType(id,def.class=="strategic" and 4 or 1)
+                        break
+                    end
                 end
-            elseif near_start or index%5==0 then
-                name=land_resources[(index+math.floor(index/width))%#land_resources+1]
-                resource=GameInfoTypes[name]
-                if name=="RESOURCE_IRON" or name=="RESOURCE_GOLD" or name=="RESOURCE_COAL" or name=="RESOURCE_ALUMINUM" then
-                    plot:SetPlotType(PlotTypes.PLOT_HILLS,false,false)
-                else
-                    plot:SetPlotType(PlotTypes.PLOT_LAND,false,false)
-                end
-            end
-            if resource and permitted(name,plot) then
-                local strategic=Game.GetResourceUsageType(resource)==ResourceUsageTypes.RESOURCEUSAGE_STRATEGIC
-                plot:SetResourceType(resource,strategic and 4 or 1)
             end
         end
     end
     Map.RecalculateAreas()
-    recovering_generation=false
+    recovering_generation=was_recovering
 end
 
 ------------------------------------------------------------------------------
