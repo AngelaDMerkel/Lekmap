@@ -86,6 +86,9 @@ function Lekmap_Validation.Check(args)
     if args.competitive then
         Lekmap_Competition.Refresh()
         report.competition = Lekmap_Competition.Inspect(Lekmap_Spawns.GetAllStartPlots(), true)
+        Lekmap_Competition.EvaluatePlans(Lekmap_Spawns.GetAllStartPlots(),report.competition)
+        local finished=Lekmap_Competition.GetLastReport()
+        report.competition.repairs=finished and finished.repairs or {}
         for _,message in ipairs(report.competition.violations) do table.insert(report.warnings, "Competitive balance target: "..message) end
     end
     if args.strategicDistribution and args.strategicDistribution > 1 then
