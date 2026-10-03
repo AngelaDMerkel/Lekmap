@@ -13,6 +13,7 @@ Lekmap_Competition.LIMITS = {
     territory_ratio = 1.40, opponent_distance_ratio = 1.40,
     approach_ratio = 3.0, naval_ratio = 2.0, pressure_ratio = 2.0, plan_ratio = 1.35, require_fresh_water = true,
     refinement_passes = 3, candidates_per_region = 16, maximum_repairs = 12,
+    maximum_refinement_evaluations = 288,
 }
 
 local width, height, nodes, fields, opening_cache, site_cache, snapshots
@@ -51,10 +52,12 @@ function Lekmap_Competition.TilePotential(plot)
 end
 
 function Lekmap_Competition.Refresh()
+    local previous_snapshots,previous_fields,previous_count=snapshots,fields,field_count
     width, height = Map.GetGridSize()
     Lekmap_Opening.Reset()
     nodes, fields, opening_cache, site_cache = {}, {}, {}, {}
     snapshots={}
+    local same_geography=previous_snapshots~=nil and #previous_snapshots==width*height
     field_count=0
     yield_tables = {
         terrain = ReadYields("Terrain_Yields", "TerrainType"),
@@ -65,6 +68,15 @@ function Lekmap_Competition.Refresh()
         local plot = Map.GetPlot(x,y)
         local node = { x=x, y=y, plot=plot, passable=Passable(plot), adjacent={} }
         local tile=Lekmap_StartRules.Snapshot(plot)
+        tile.river_edges=0
+        for direction=0,5 do
+            if plot.IsRiverCrossing and plot:IsRiverCrossing(direction) then tile.river_edges=tile.river_edges+2^direction end
+        end
+        local previous=previous_snapshots and previous_snapshots[Index(x,y)]
+        if not previous or previous.x~=x or previous.y~=y or previous.terrain~=tile.terrain
+            or previous.feature~=tile.feature or previous.hills~=tile.hills or previous.mountain~=tile.mountain
+            or previous.water~=tile.water or previous.wonder~=tile.wonder or previous.river~=tile.river
+            or previous.river_edges~=tile.river_edges then same_geography=false end
         snapshots[Index(x,y)]=tile
         local yields=Lekmap_StartRules.TileYields(tile,Lekmap_StartRules.Context(nil,true))
         node.food, node.production = yields[1],yields[2]
@@ -74,6 +86,9 @@ function Lekmap_Competition.Refresh()
         end
         nodes[Index(x,y)] = node
     end end
+    -- Bonus-resource additions do not change travel. Preserve those fields
+    -- across repair passes; any terrain/feature/river change invalidates them.
+    if same_geography then fields,field_count=previous_fields,previous_count end
     -- Early naval access uses the contiguous shallow-water component. Ocean
     -- transport is considered separately for contested offshore strategics.
     water_components,water_sizes={},{}
@@ -104,6 +119,7 @@ end
 function Lekmap_Competition.Begin(active)
     enabled, reserved, last_report = active == true, {}, nil
     bias_requirements = {}
+    snapshots=nil -- A new generation may have different rules or wrapping.
     Lekmap_StartRules.Reset()
     Lekmap_Competition.Refresh()
 end
@@ -388,6 +404,11 @@ function Lekmap_Competition.RefineStarts(starts,assignments,biases,settings)
     if not enabled then return end
     Lekmap_Competition.Refresh()
     local L=Lekmap_Competition.LIMITS
+    local player_count=0;for _ in pairs(assignments) do player_count=player_count+1 end
+    -- Keep the ordinary six-player search intact while bounding full-map
+    -- rescoring for large lobbies. Biases, scores and repair rules are unchanged.
+    local candidate_limit=math.min(L.candidates_per_region,math.max(1,
+        math.floor(L.maximum_refinement_evaluations/math.max(1,player_count*L.refinement_passes))))
     for player,region in Lekmap_Utilities.OrderedPairs(assignments) do
         local bias=biases[player]
         bias_requirements[region]={require_coastal=bias.coastal_hard==true,
@@ -435,7 +456,7 @@ function Lekmap_Competition.RefineStarts(starts,assignments,biases,settings)
                 local distinct=true
                 for _,chosen in ipairs(shortlist) do if Distance(candidate,chosen)<3 then distinct=false; break end end
                 if distinct then shortlist[#shortlist+1]=candidate end
-                if #shortlist>=L.candidates_per_region then break end
+                if #shortlist>=candidate_limit then break end
             end
             local best,best_report=original,current
             for _,candidate in ipairs(shortlist) do
