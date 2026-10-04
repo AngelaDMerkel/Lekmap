@@ -176,7 +176,7 @@ function T.ExitCapacity(x,y,radius)
     local center=Index(x,y)
     local local_nodes={}
     for plot in Lekmap_HexUtil.PlotAreaSpiralIterator(Map.GetPlot(x,y),radius,nil,nil,nil,true) do
-        if not plot:IsWater() and not plot:IsMountain() and not plot:IsNaturalWonder() and plot:GetFeatureType()~=FeatureTypes.FEATURE_ICE then
+        if not plot:IsWater() and not plot:IsMountain() and not Lekmap_Utilities.IsNaturalWonder(plot) and plot:GetFeatureType()~=FeatureTypes.FEATURE_ICE then
             local_nodes[Index(plot:GetX(),plot:GetY())]=plot
         end
     end

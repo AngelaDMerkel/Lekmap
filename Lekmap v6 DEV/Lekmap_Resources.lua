@@ -106,7 +106,7 @@ function Lekmap_Resources.BuildWorldPlotCache()
                 is_lake         = plot:IsLake(),
                 adjacent_to_land = plot:IsAdjacentToLand(),
                 has_resource    = (plot:GetResourceType(-1) ~= -1),
-                is_wonder       = plot:IsNaturalWonder(),
+                is_wonder       = Lekmap_Utilities.IsNaturalWonder(plot),
             }
 
             if plot_type == PlotTypes.PLOT_MOUNTAIN then
@@ -180,7 +180,7 @@ function Lekmap_Resources.RefreshPlotCacheAt(x, y)
         is_lake         = plot:IsLake(),
         adjacent_to_land = plot:IsAdjacentToLand(),
         has_resource    = (plot:GetResourceType(-1) ~= -1),
-                is_wonder       = plot:IsNaturalWonder(),
+                is_wonder       = Lekmap_Utilities.IsNaturalWonder(plot),
     }
 end
 
@@ -215,7 +215,7 @@ end
 -- Never calls SetTerrainType (biome grass/plains/desert/tundra/snow unchanged).
 -- @return true if the map was modified
 local function TryRelaxPlotForStartBonus(plot, def)
-    if not plot or plot:IsWater() or plot:IsMountain() or plot:IsNaturalWonder() then
+    if not plot or plot:IsWater() or plot:IsMountain() or Lekmap_Utilities.IsNaturalWonder(plot) then
         return false
     end
     if plot:GetResourceType(-1) ~= -1 then

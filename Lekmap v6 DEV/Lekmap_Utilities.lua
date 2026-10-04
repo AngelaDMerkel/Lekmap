@@ -18,8 +18,16 @@
 
 Lekmap_Utilities = {}
 
+-- IsNaturalWonder is a C++ plot method, but is not exposed to Civ V's Lua.
+-- Read the active feature definition instead of depending on a DLL extension.
+function Lekmap_Utilities.IsNaturalWonder(plot)
+    if not plot or plot:GetFeatureType()<0 then return false end
+    local feature=GameInfo.Features[plot:GetFeatureType()]
+    return feature~=nil and (feature.NaturalWonder==true or feature.NaturalWonder==1)
+end
+
 local function HabitableStart(plot)
-    return plot and not plot:IsWater() and not plot:IsMountain() and not plot:IsNaturalWonder()
+    return plot and not plot:IsWater() and not plot:IsMountain() and not Lekmap_Utilities.IsNaturalWonder(plot)
         and not plot:IsImpassable() and plot:GetFeatureType()~=FeatureTypes.FEATURE_OASIS
 end
 
@@ -32,7 +40,7 @@ function Lekmap_Utilities.FindFallbackStart(occupied, minimum_distance, repair_t
     local best,best_score
     for y=0,height-1 do for x=0,width-1 do
         local plot=Map.GetPlot(x,y)
-        local usable=not plot:IsNaturalWonder() and (repair_terrain or
+        local usable=not Lekmap_Utilities.IsNaturalWonder(plot) and (repair_terrain or
             (HabitableStart(plot) and plot:GetResourceType(-1)==-1))
         if usable then
             local closest=width+height

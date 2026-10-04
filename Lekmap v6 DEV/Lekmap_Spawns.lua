@@ -571,7 +571,7 @@ end
 -- ripples. Even a fallback must be habitable and clear of earlier starts.
 function Lekmap_Spawns.IsLegalStart(x, y, minimum_distance)
     local plot = Map.GetPlot(x, y)
-    if not plot or plot:IsWater() or plot:IsMountain() or plot:IsNaturalWonder()
+    if not plot or plot:IsWater() or plot:IsMountain() or Lekmap_Utilities.IsNaturalWonder(plot)
         or plot:GetFeatureType() == FeatureTypes.FEATURE_OASIS then return false end
     for _, start in Lekmap_Utilities.OrderedPairs(start_plots) do
         if Map.PlotDistance(x, y, start.x, start.y) < (minimum_distance or 5) then return false end

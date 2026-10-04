@@ -185,7 +185,7 @@ local function IsPlotEligible(x, y)
     local IMPACT_LAYER = Lekmap_Constants.IMPACT_LAYER
     local plot = Map.GetPlot(x, y)
     if Lekmap_Competition and Lekmap_Competition.IsReservedSite(x,y) then return false end
-    return plot ~= nil and not plot:IsNaturalWonder() and plot:GetResourceType(-1) == -1
+    return plot ~= nil and not Lekmap_Utilities.IsNaturalWonder(plot) and plot:GetResourceType(-1) == -1
         and not Lekmap_Resources.IsCollision(x, y)
         and not Lekmap_Impact.IsImpacted(IMPACT_LAYER.NATURAL_WONDER, x, y)
 end

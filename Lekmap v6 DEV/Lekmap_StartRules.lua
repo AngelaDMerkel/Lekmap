@@ -164,7 +164,7 @@ function R.Snapshot(plot,origin)
     return {x=plot:GetX(),y=plot:GetY(),terrain=terrain and terrain.Type,feature=feature and feature.Type,
         resource=resource and resource.Type,quantity=plot:GetNumResource(),hills=plot:IsHills(),mountain=plot:IsMountain(),water=plot:IsWater(),
         lake=plot:IsLake(),river=plot:IsRiverSide(),fresh=plot:IsFreshWater(),coastal=plot:IsCoastalLand(),
-        wonder=plot:IsNaturalWonder(),distance=origin and Map.PlotDistance(origin.x,origin.y,plot:GetX(),plot:GetY()) or 0}
+        wonder=Lekmap_Utilities.IsNaturalWonder(plot),distance=origin and Map.PlotDistance(origin.x,origin.y,plot:GetX(),plot:GetY()) or 0}
 end
 function R.Revealed(tile,known)
     local row=R.Row("Resources",tile.resource)

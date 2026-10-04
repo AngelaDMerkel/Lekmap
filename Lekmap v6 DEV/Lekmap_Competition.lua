@@ -26,7 +26,7 @@ local function Index(x, y) return y * width + x + 1 end
 local function Distance(a, b) return Map.PlotDistance(a.x, a.y, b.x, b.y) end
 local function Passable(plot)
     return plot and not plot:IsWater() and not plot:IsMountain()
-        and not plot:IsNaturalWonder() and plot:GetFeatureType() ~= FeatureTypes.FEATURE_ICE
+        and not Lekmap_Utilities.IsNaturalWonder(plot) and plot:GetFeatureType() ~= FeatureTypes.FEATURE_ICE
 end
 
 local function ReadYields(table_name, type_column)
@@ -95,7 +95,7 @@ function Lekmap_Competition.Refresh()
     local component=0
     for index,node in ipairs(nodes) do
         local function navigable(n)
-            return n.plot:IsWater() and not n.plot:IsLake() and not n.plot:IsNaturalWonder()
+            return n.plot:IsWater() and not n.plot:IsLake() and not Lekmap_Utilities.IsNaturalWonder(n.plot)
                 and n.plot:GetTerrainType()==TerrainTypes.TERRAIN_COAST
                 and n.plot:GetFeatureType()~=FeatureTypes.FEATURE_ICE
         end
@@ -136,7 +136,7 @@ function Lekmap_Competition.Distances(x, y, water)
         local index = queue[head]; head = head+1
         for _, other in ipairs(nodes[index].adjacent) do
             local node = nodes[other]
-            local coastal = water and node.plot:IsWater() and not node.plot:IsNaturalWonder()
+            local coastal = water and node.plot:IsWater() and not Lekmap_Utilities.IsNaturalWonder(node.plot)
                 and node.plot:GetFeatureType() ~= FeatureTypes.FEATURE_ICE
             if distances[other] == nil and (node.passable or coastal) then
                 distances[other] = distances[index]+1

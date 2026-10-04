@@ -867,7 +867,7 @@ end
 function Lekmap_ResourceDefs.DescribePlot(plot)
     return {x=plot:GetX(),y=plot:GetY(),plot_type=plot:GetPlotType(),
         terrain_type=plot:GetTerrainType(),feature_type=plot:GetFeatureType(),
-        has_resource=plot:GetResourceType(-1)~=-1,is_wonder=plot:IsNaturalWonder(),
+        has_resource=plot:GetResourceType(-1)~=-1,is_wonder=Lekmap_Utilities.IsNaturalWonder(plot),
         is_mountain=plot:IsMountain(),is_water=plot:IsWater(),is_hill=plot:IsHills(),
         is_flat=plot:IsFlatlands(),is_coast=plot:GetTerrainType()==TerrainTypes.TERRAIN_COAST,
         is_lake=plot:IsLake()}

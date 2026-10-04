@@ -172,7 +172,7 @@ function Lekmap_CityStates.CanPlaceAt(x, y, area_id, force_placement, ignore_col
     if Lekmap_Competition and Lekmap_Competition.BlocksCityState(x,y) then return false end
 
     -- Hard exclusions also apply when a soft regional preference is relaxed.
-    if plot:IsNaturalWonder() or Lekmap_Resources.IsCollision(x, y) then return false end
+    if Lekmap_Utilities.IsNaturalWonder(plot) or Lekmap_Resources.IsCollision(x, y) then return false end
     for _, start in Lekmap_Utilities.OrderedPairs(Lekmap_Spawns.GetAllStartPlots()) do
         if Map.PlotDistance(x, y, start.x, start.y) < 5 then return false end
     end
@@ -625,7 +625,7 @@ local function AttemptToPlaceHills(x, y)
     if not plot then return false end
     if plot:GetResourceType(-1) ~= -1 then return false end
     local plot_type = plot:GetPlotType()
-    if plot_type ~= PlotTypes.PLOT_LAND or plot:IsNaturalWonder() or Lekmap_Resources.IsCollision(x, y) then return false end
+    if plot_type ~= PlotTypes.PLOT_LAND or Lekmap_Utilities.IsNaturalWonder(plot) or Lekmap_Resources.IsCollision(x, y) then return false end
     if plot:IsRiverSide() then return false end
     if plot:GetFeatureType() == FeatureTypes.FEATURE_FOREST then return false end
     plot:SetPlotType(PlotTypes.PLOT_HILLS, false, true)
@@ -636,7 +636,7 @@ end
 --- Attempt to place a food bonus at a plot. Returns placed_bonus, placed_oasis, placed_fish.
 local function AttemptToPlaceBonus(x, y, allow_oasis, fish_count)
     local plot = Map.GetPlot(x, y)
-    if not plot or plot:IsMountain() or plot:IsNaturalWonder()
+    if not plot or plot:IsMountain() or Lekmap_Utilities.IsNaturalWonder(plot)
         or Lekmap_Resources.IsCollision(x, y) or plot:GetResourceType(-1) ~= -1 then
         return false, false, false
     end

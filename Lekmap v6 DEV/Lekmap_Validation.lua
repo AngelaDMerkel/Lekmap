@@ -18,7 +18,7 @@ function Lekmap_Validation.Check(args)
             return
         end
         local index = plot:GetY() * width + plot:GetX() + 1
-        if plot:IsWater() or plot:IsMountain() or plot:IsNaturalWonder() then
+        if plot:IsWater() or plot:IsMountain() or Lekmap_Utilities.IsNaturalWonder(plot) then
             table.insert(report.errors, "Player " .. id .. " has an uninhabitable starting plot")
         end
         if occupied[index] then table.insert(report.errors, "Players share starting plot " .. index) end
@@ -47,7 +47,7 @@ function Lekmap_Validation.Check(args)
             report.resource_tiles = report.resource_tiles + 1
             local key = Lekmap_ResourceDefs.GetKey(id)
             local active = key and Lekmap_ResourceDefs.active[key]
-            local valid = not occupied[index] and not plot:IsNaturalWonder() and not plot:IsMountain()
+            local valid = not occupied[index] and not Lekmap_Utilities.IsNaturalWonder(plot) and not plot:IsMountain()
             if active then
                 local copy = {}
                 for k, v in pairs(entry) do copy[k] = v end
